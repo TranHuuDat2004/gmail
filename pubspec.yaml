@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  image_picker: ^1.0.7
+  
   # Firebase Core - BẮT BUỘC
   firebase_core: ^2.27.0  # Cập nhật lên phiên bản mới nhất
 
