@@ -1,41 +1,42 @@
 name: gmail
-description: "A new Flutter project."
-
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-
+description: A new Flutter project.
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.2
+  sdk: ">=2.17.0 <3.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
 
-  # Firebase (phiên bản 2022)
-  firebase_core: ^1.24.0      # Ra cuối 2022
-  firebase_auth: ^3.11.2      # Tương thích với firebase_core 1.x
-  cloud_firestore: ^3.4.6     # Cuối năm 2022
-  firebase_storage: ^10.3.9   # Cuối năm 2022
-  firebase_messaging: ^13.1.0 # Cuối năm 2022
+  # Firebase Core - BẮT BUỘC
+  firebase_core: ^2.27.0  # Cập nhật lên phiên bản mới nhất
 
-  # State Management
-  provider: ^6.0.5            # Bản ổn định của 2022
-  
+  # Các dịch vụ Firebase khác (ví dụ)
+  firebase_auth: ^4.19.2 # Cập nhật lên phiên bản mới nhất
+  cloud_firestore: ^4.16.0 # Cập nhật lên phiên bản mới nhất
+  firebase_storage: ^11.7.2 # Cập nhật lên phiên bản mới nhất
+  firebase_messaging: ^14.8.0 # Cập nhật lên phiên bản mới nhất
+
+  # Các gói khác
+  # ... (giữ nguyên hoặc cập nhật nếu cần)
+
+  # Gói này bạn có thể để Flutter tự quản lý hoặc cập nhật
+  # _flutterfire_internals: # thường không cần khai báo trực tiếp
+
+  # Cập nhật các gói khác nếu chúng cũng cũ
+  http: ^1.2.0 # Ví dụ, cập nhật http
+  intl: ^0.19.0 # Ví dụ, cập nhật intl
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_lints: ^5.0.0
-
+  flutter_lints: ^3.0.0 # Cập nhật lints
 
 flutter:
-
-
-  uses-material-design: true
-
   assets:
     - assets/images/
     - assets/icons/
     - assets/fonts/
+  uses-material-design: true
