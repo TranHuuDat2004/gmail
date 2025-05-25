@@ -7,116 +7,217 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      debugShowCheckedModeBanner: false,
+      // Optional: Define a global light theme
+      // theme: ThemeData.light().copyWith(
+      //   primaryColor: Colors.blue, // Example primary color for light theme
+      //   appBarTheme: const AppBarTheme(
+      //     backgroundColor: Colors.white,
+      //     elevation: 1,
+      //     iconTheme: IconThemeData(color: Colors.black54),
+      //     titleTextStyle: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w500),
+      //   ),
+      //   // Add other global theme properties if needed
+      // ),
+      home: GmailUI(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class GmailUI extends StatelessWidget {
+  final List<Map<String, String>> emails = [
+    {
+      "sender": "Amazon",
+      "subject": "Your order has been shipped!",
+      "time": "8:30 AM",
+      "avatar": "images/amazon.png"
+    },
+    {
+      "sender": "Steam",
+      "subject": "New game discounts available",
+      "time": "7:45 AM",
+      "avatar": "images/steam.png"
+    },
+    {
+      "sender": "Netflix",
+      "subject": "New movies you might like",
+      "time": "6:15 AM",
+      "avatar": "images/netflix.png"
+    },
+    {
+      "sender": "LinkedIn",
+      "subject": "Job recommendations for you",
+      "time": "5:00 AM",
+      "avatar": "images/linkedin.png"
+    },
+    {
+      "sender": "Spotify",
+      "subject": "Your weekly playlist is ready",
+      "time": "4:20 AM",
+      "avatar": "images/spotify.png"
+    },
+    {
+      "sender": "Gamefound",
+      "subject": "Update in your backed project",
+      "time": "2:41 AM",
+      "avatar": "images/gamefound.jpg"
+    },
+    {
+      "sender": "YouTube",
+      "subject": "New video from your favorite channel",
+      "time": "1:35 AM",
+      "avatar": "images/youtube.png"
+    },
+    {
+      "sender": "Trello",
+      "subject": "Task reminder: Finish the report",
+      "time": "Yesterday",
+      "avatar": "images/trello.jpg"
+    },
+    {
+      "sender": "Google",
+      "subject": "Security alert: Login from new device",
+      "time": "Yesterday",
+      "avatar": "images/google.png"
+    },
+    {
+      "sender": "BoardGameGeek",
+      "subject": "Top 10 trending board games",
+      "time": "2 Mar",
+      "avatar": "images/boardgamegeek.png"
+    },
+    {
+      "sender": "PayPal",
+      "subject": "You received a payment",
+      "time": "1 Mar",
+      "avatar": "images/paypal.png"
+    },
+    {
+      "sender": "Discord",
+      "subject": "New message in your server",
+      "time": "29 Feb",
+      "avatar": "images/discord.jpg"
+    },
+  ];
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  GmailUI({super.key}); // Added super.key
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+        backgroundColor: Colors.white, // Light theme AppBar background
+        elevation: 1.0, // Add a slight shadow for separation
+        iconTheme: const IconThemeData(color: Colors.black54), // Darker icon for drawer
+        title: Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[200], // Lighter background for search bar
+            borderRadius: BorderRadius.circular(30),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: const TextField(
+            decoration: InputDecoration(
+              icon: Icon(Icons.search, color: Colors.black54), // Darker search icon
+              hintText: "Search in mail",
+              hintStyle: TextStyle(color: Colors.black38), // Darker hint text
+              border: InputBorder.none,
             ),
-          ],
+            style: TextStyle(color: Colors.black87), // Darker input text
+          ),
         ),
+        actions: const [ // Added const
+          CircleAvatar(
+            backgroundImage: AssetImage("images/nokotan.jpg"), // Assuming this image works on light bg
+          ),
+          SizedBox(width: 16),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      drawer: CustomDrawer(),
+      body: ListView.builder(
+        itemCount: emails.length,
+        itemBuilder: (context, index) {
+          final email = emails[index];
+          return ListTile(
+            leading: CircleAvatar(
+              backgroundImage: AssetImage(email["avatar"]!),
+              // Fallback in case image fails or for a consistent look
+              // backgroundColor: Colors.grey[300],
+              // child: Text(email["sender"]![0], style: const TextStyle(color: Colors.black54)),
+            ),
+            title: Text(email["sender"]!,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.black87)), // Darker text
+            subtitle: Text(email["subject"]!,
+                style: const TextStyle(color: Colors.black54)), // Darker, less prominent text
+            trailing: Text(email["time"]!,
+                style: const TextStyle(color: Colors.black54)), // Darker, less prominent text
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.white, // Light background for FAB
+        elevation: 2.0, // Add some shadow
+        onPressed: () {},
+        icon: const Icon(Icons.edit, color: Colors.redAccent), // Keep accent color for icon
+        label: const Text("Compose", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500)), // Keep accent color for text
+      ),
+      backgroundColor: Colors.white, // Main background to white
+    );
+  }
+}
+
+class CustomDrawer extends StatelessWidget {
+  const CustomDrawer({super.key}); // Added super.key
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: Colors.white, // Drawer background to white
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Colors.grey[100], // Light header background
+            ),
+            child: Row(
+              children: const [ // Added const
+                Icon(Icons.mail, color: Colors.redAccent, size: 32), // Accent color for icon
+                SizedBox(width: 10),
+                Text("Gmail",
+                    style: TextStyle(color: Colors.black87, fontSize: 22)), // Darker text
+              ],
+            ),
+          ),
+          _buildDrawerItem(Icons.all_inbox, "All inboxes"),
+          _buildDrawerItem(Icons.inbox, "Primary"),
+          _buildDrawerItem(Icons.people_outline, "Social"), // Using outline for consistency
+          _buildDrawerItem(Icons.local_offer_outlined, "Promotions"), // Using outline
+          _buildDrawerItem(Icons.update, "Updates", isSelected: true),
+          _buildDrawerItem(Icons.forum_outlined, "Forums"), // Using outline
+          _buildDrawerItem(Icons.star_border, "Starred"), // Border version for light theme
+          _buildDrawerItem(Icons.schedule_outlined, "Scheduled"), // Using outline
+          _buildDrawerItem(Icons.drafts_outlined, "Drafts"), // Using outline
+          _buildDrawerItem(Icons.delete_outline, "Trash"), // Using outline
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(IconData icon, String title,
+      {bool isSelected = false}) {
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? Colors.redAccent : Colors.black54), // Accent if selected, else dark grey
+      title: Text(title, style: TextStyle(color: isSelected ? Colors.redAccent : Colors.black87, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      tileColor: isSelected ? Colors.red[50] : Colors.transparent, // Light accent background if selected
+      shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)) : null,
+      contentPadding: isSelected ? const EdgeInsets.symmetric(horizontal: 24.0) : null, // More padding for selected
+      onTap: () {
+        // Handle navigation
+      },
     );
   }
 }
