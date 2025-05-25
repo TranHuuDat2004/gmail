@@ -1,0 +1,41 @@
+name: gmail
+description: "A new Flutter project."
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+
+  # Firebase (phiên bản 2022)
+  firebase_core: ^1.24.0      # Ra cuối 2022
+  firebase_auth: ^3.11.2      # Tương thích với firebase_core 1.x
+  cloud_firestore: ^3.4.6     # Cuối năm 2022
+  firebase_storage: ^10.3.9   # Cuối năm 2022
+  firebase_messaging: ^13.1.0 # Cuối năm 2022
+
+  # State Management
+  provider: ^6.0.5            # Bản ổn định của 2022
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+
+flutter:
+
+
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
