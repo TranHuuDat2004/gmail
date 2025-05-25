@@ -1,6 +1,9 @@
 // lib/profile_screen.dart
-
+import 'dart:io'; // Thêm import này
 import 'package:flutter/material.dart';
+import 'edit_profile_screen.dart'; // Import màn hình chỉnh sửa
+import 'change_password_screen.dart'; // Import màn hình đổi mật khẩu
+// import 'custom_page_route.dart'; // Nếu bạn dùng custom route
 // import 'package:flutter/gestures.dart'; // Uncomment if you use TapGestureRecognizer
 
 class ProfileScreen extends StatefulWidget {
@@ -33,6 +36,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // HOẶC nếu bạn có URL:
     // _userAvatarImage = NetworkImage('URL_TO_USER_AVATAR_IMAGE');
   }
+
+// Hàm để điều hướng và nhận kết quả từ EditProfileScreen
+  Future<void> _navigateToEditProfile() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute( // Hoặc dùng custom route của bạn
+        builder: (context) => EditProfileScreen(
+          currentName: _userName,
+          currentAvatar: _userAvatarImage,
+        ),
+      ),
+    );
+    if (result != null && result is Map) {
+      setState(() {
+        _userName = result['name'] ?? _userName;
+        if (result['avatarFile'] != null && result['avatarFile'] is File) {
+          _userAvatarImage = FileImage(result['avatarFile'] as File);
+        }
+        // Cập nhật lại _userInitial nếu tên thay đổi
+        if (_userName.isNotEmpty) {
+          var nameParts = _userName.split(' ');
+          if (nameParts.isNotEmpty && nameParts.last.isNotEmpty) {
+            _userInitial = nameParts.last[0].toUpperCase();
+          } else if (_userName.isNotEmpty) {
+            _userInitial = _userName[0].toUpperCase();
+          }
+        }
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -173,19 +207,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   value: "View or change your avatar",
                   currentAvatar: _userAvatarImage,
                   initial: _userInitial,
-                  onTap: () {/* Navigate to change avatar screen */},
+                  onTap: _navigateToEditProfile, // GỌI HÀM KHI NHẤN VÀO AVATAR TRONG LIST
                 ),
                 _buildProfileListItem(
                   icon: Icons.badge_outlined,
                   title: "Name",
                   value: _userName,
-                  onTap: () {/* Navigate to edit name screen */},
+                  onTap: _navigateToEditProfile, // HOẶC KHI NHẤN VÀO TÊN
                 ),
                 _buildProfileListItem(
                   icon: Icons.phone_outlined,
                   title: "Phone",
                   value: _userPhoneNumber ?? "Add recovery phone",
-                  onTap: () {/* Navigate to edit phone screen */},
+                  onTap: () { /* Navigate to edit phone screen, tương tự _navigateToEditProfile */ },
                 ),
               ],
             ),
@@ -195,34 +229,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildActionButton(
                   title: "Chỉnh sửa hồ sơ",
                   icon: Icons.edit_outlined,
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Navigate to Edit Profile Screen')),
-                    );
-                  },
+                  onTap: _navigateToEditProfile, // SỬ DỤNG HÀM ĐÃ TẠO
                 ),
                 _buildActionButton(
                   title: "Đổi mật khẩu",
                   icon: Icons.lock_outline,
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Navigate to Change Password Screen')),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
+                      // Hoặc dùng custom route: SlideRightRoute(page: const ChangePasswordScreen()),
                     );
                   },
                 ),
-                _buildActionButton(
-                  title: "Manage 2-step Verification",
-                  icon: Icons.verified_user_outlined, // or security_outlined
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Navigate to 2-Step Verification')),
-                    );
-                  },
-                  isLinkStyle: true,
-                ),
+                // ... (nút 2-step verification)
               ],
             ),
             const SizedBox(height: 30),
