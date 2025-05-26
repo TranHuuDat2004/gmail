@@ -8,6 +8,8 @@ import 'profile_screen.dart'; // Import the new profile screen
 //import 'advanced_search_dialog.dart';
 import 'search_overlay_screen.dart';
 import 'login.dart';
+import 'display_settings_screen.dart'; // Import display settings screen
+import 'auto_answer_mode_screen.dart'; // Import auto answer mode screen
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +61,7 @@ class GmailUI extends StatefulWidget {
 class _GmailUIState extends State<GmailUI> {
   bool showDetail = false;
   String selectedLabel = "Inbox";
+  bool isDetailedView = true; // Added for display mode
 
   final List<String> userLabels = ["Work", "Family"];
 
@@ -181,10 +184,25 @@ class _GmailUIState extends State<GmailUI> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 20, top: 8, bottom: 4),
-            child: Text(
-              selectedLabel,
-              style: const TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w500),
+            padding: const EdgeInsets.only(left: 20, right: 16, top: 8, bottom: 4), // Added right padding for the icon button
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  selectedLabel,
+                  style: const TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w500),
+                ),
+                IconButton(
+                  icon: Icon(isDetailedView ? Icons.view_stream : Icons.view_list),
+                  color: Colors.black54,
+                  tooltip: isDetailedView ? 'Show basic view' : 'Show detailed view',
+                  onPressed: () {
+                    setState(() {
+                      isDetailedView = !isDetailedView;
+                    });
+                  },
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -195,104 +213,167 @@ class _GmailUIState extends State<GmailUI> {
                 itemBuilder: (context, index) {
                   final email = filteredEmails[index];
                   final bool isUnread = email["unread"] ?? true;
-                  return ListTile(
-                    leading: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                        );
-                      },
-                      child: email["avatar"] != null
-                          ? CircleAvatar(
-                              backgroundColor: Colors.transparent,
-                              backgroundImage: AssetImage(email["avatar"]),
-                            )
-                          : CircleAvatar(
-                              backgroundColor: Colors.blue[100],
-                              child: Text(
-                                (email["sender"] ?? "").isNotEmpty ? email["sender"][0].toUpperCase() : "?",
-                                style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                  // Conditional rendering based on isDetailedView will be implemented next
+                  if (isDetailedView) {
+                    // DETAILED VIEW (current implementation)
+                    return ListTile(
+                      leading: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          );
+                        },
+                        child: email["avatar"] != null
+                            ? CircleAvatar(
+                                backgroundColor: Colors.transparent,
+                                backgroundImage: AssetImage(email["avatar"]),
+                              )
+                            : CircleAvatar(
+                                backgroundColor: Colors.blue[100],
+                                child: Text(
+                                  (email["sender"] ?? "").isNotEmpty ? email["sender"][0].toUpperCase() : "?",
+                                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                                ),
                               ),
-                            ),
-                    ),
-                    title: Text(
-                      email["sender"] ?? '',
-                      style: TextStyle(
-                        fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                        color: Colors.black87,
-                        fontSize: 16,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          email["subject"] ?? '',
-                          style: TextStyle(
-                            fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                            color: Colors.black87,
-                            fontSize: 15,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                      title: Text(
+                        email["sender"] ?? '',
+                        style: TextStyle(
+                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                          color: Colors.black87,
+                          fontSize: 16,
                         ),
-                        if (email["preview"] != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2.0),
-                            child: Text(
-                              email["preview"],
-                              style: const TextStyle(color: Colors.black45, fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                    ),
-                    trailing: SizedBox(
-                      height: 48,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            email["time"] ?? '',
-                            style: const TextStyle(color: Colors.black54, fontSize: 13),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              email["starred"] == true ? Icons.star : Icons.star_border,
-                              color: email["starred"] == true ? Colors.amber : Colors.grey,
-                              size: 22,
+                            email["subject"] ?? '',
+                            style: TextStyle(
+                              fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                              color: Colors.black87,
+                              fontSize: 15,
                             ),
-                            splashColor: Colors.transparent,
-                            highlightColor: Colors.transparent,
-                            hoverColor: Colors.transparent,
-                            onPressed: () {
-                              setState(() {
-                                email["starred"] = !(email["starred"] ?? false);
-                              });
-                            },
-                            tooltip: email["starred"] == true ? 'Unstar' : 'Star',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                            overflow: TextOverflow.ellipsis,
                           ),
+                          if (email["preview"] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Text(
+                                email["preview"],
+                                style: const TextStyle(color: Colors.black45, fontSize: 13),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                         ],
                       ),
-                    ),
-                    onTap: () {
-                      setState(() {
-                        email["unread"] = false;
-                      });
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
-                      );
-                    },
-                    tileColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    shape: const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
-                  );
+                      trailing: SizedBox(
+                        height: 48,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              email["time"] ?? '',
+                              style: const TextStyle(color: Colors.black54, fontSize: 13),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                email["starred"] == true ? Icons.star : Icons.star_border,
+                                color: email["starred"] == true ? Colors.amber : Colors.grey,
+                                size: 22,
+                              ),
+                              splashColor: Colors.transparent,
+                              highlightColor: Colors.transparent,
+                              hoverColor: Colors.transparent,
+                              onPressed: () {
+                                setState(() {
+                                  email["starred"] = !(email["starred"] ?? false);
+                                });
+                              },
+                              tooltip: email["starred"] == true ? 'Unstar' : 'Star',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          email["unread"] = false;
+                        });
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
+                        );
+                      },
+                      tileColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      shape: const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
+                    );
+                  } else {
+                    // BASIC VIEW
+                    return ListTile(
+                      leading: GestureDetector(
+                         onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          );
+                        },
+                        child: email["avatar"] != null
+                            ? CircleAvatar(
+                                backgroundColor: Colors.transparent,
+                                backgroundImage: AssetImage(email["avatar"]),
+                              )
+                            : CircleAvatar(
+                                backgroundColor: Colors.blue[100],
+                                child: Text(
+                                  (email["sender"] ?? "").isNotEmpty ? email["sender"][0].toUpperCase() : "?",
+                                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                      ),
+                      title: Text(
+                        email["sender"] ?? '',
+                        style: TextStyle(
+                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                          color: Colors.black87,
+                          fontSize: 16,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        email["subject"] ?? '',
+                        style: TextStyle(
+                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                          color: Colors.black54, // Slightly dimmer for basic view subject
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      trailing: Text(
+                        email["time"] ?? '',
+                        style: const TextStyle(color: Colors.black54, fontSize: 13),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          email["unread"] = false;
+                        });
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
+                        );
+                      },
+                      tileColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // Adjusted padding for basic view
+                      shape: const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
+                    );
+                  }
                 },
               ),
             ),
@@ -359,6 +440,29 @@ class CustomDrawer extends StatelessWidget {
           _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Updates"),
           _buildDrawerItem(Icons.forum_outlined, "Forums", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Forums"),
           const Divider(),
+          ListTile( // Added Display Settings Button
+            leading: const Icon(Icons.settings_display, color: Colors.black54),
+            title: const Text('Display Settings', style: TextStyle(color: Colors.black87)),
+            onTap: () {
+              Navigator.pop(context); // Close the drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()),
+              );
+            },
+          ),
+          ListTile( // Added Auto Answer Mode Button
+            leading: const Icon(Icons.reply_all, color: Colors.black54),
+            title: const Text('Auto Answer Mode', style: TextStyle(color: Colors.black87)),
+            onTap: () {
+              Navigator.pop(context); // Close the drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AutoAnswerModeScreen()),
+              );
+            },
+          ),
+          const Divider(), // Added Divider
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
             child: Text("Labels", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
