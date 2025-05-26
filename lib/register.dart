@@ -348,7 +348,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Firebase Demo - Register',
+                    '',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Color(0xFFB0B4BA),

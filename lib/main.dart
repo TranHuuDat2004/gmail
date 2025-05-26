@@ -435,10 +435,8 @@ class CustomDrawer extends StatelessWidget {
           _buildDrawerItem(Icons.send, "Sent", count: emails.where((e) => e['label'] == 'Sent').length, isSelected: selectedLabel == "Sent"),
           _buildDrawerItem(Icons.drafts_outlined, "Drafts", count: emails.where((e) => e['label'] == 'Drafts').length, isSelected: selectedLabel == "Drafts"),
           _buildDrawerItem(Icons.delete_outline, "Trash", count: emails.where((e) => e['label'] == 'Trash').length, isSelected: selectedLabel == "Trash"),
-          _buildDrawerItem(Icons.people_outline, "Social", count: emails.where((e) => e['label'] == 'Social').length, isSelected: selectedLabel == "Social"),
           _buildDrawerItem(Icons.local_offer_outlined, "Promotions", count: emails.where((e) => e['label'] == 'Promotions').length, isSelected: selectedLabel == "Promotions"),
           _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Updates"),
-          _buildDrawerItem(Icons.forum_outlined, "Forums", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Forums"),
           const Divider(),
           ListTile( // Added Display Settings Button
             leading: const Icon(Icons.settings_display, color: Colors.black54),
