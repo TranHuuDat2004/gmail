@@ -207,36 +207,56 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                   const SizedBox(height: 24),
                   TextField(
                     controller: _nameController,
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
                         labelText: 'Họ tên',
-                        prefixIcon: Icon(Icons.person_outline, color: Color(0xFF1A73E8))),
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.person_outline, color: Color(0xFF1A73E8)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
                     textCapitalization: TextCapitalization.words,
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _phoneController,
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
                         labelText: 'Số điện thoại',
-                        prefixIcon: Icon(Icons.phone_outlined, color: Color(0xFF1A73E8))),
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.phone_outlined, color: Color(0xFF1A73E8)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
                     keyboardType: TextInputType.phone,
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _emailController,
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
                         labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF1A73E8))),
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF1A73E8)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
                     keyboardType: TextInputType.emailAddress,
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _passwordController,
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
                         labelText: 'Mật khẩu',
-                        prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8))),
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
                     obscureText: true,
                     enabled: !_isLoading,
                   ),

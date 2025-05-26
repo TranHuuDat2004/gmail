@@ -5,7 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:gmail/firebase_options.dart';
 import 'profile_screen.dart'; // Import the new profile screen
-import 'advanced_search_dialog.dart';
+//import 'advanced_search_dialog.dart';
 import 'search_overlay_screen.dart';
 import 'login.dart';
 
@@ -356,7 +356,7 @@ class CustomDrawer extends StatelessWidget {
           _buildDrawerItem(Icons.delete_outline, "Trash", count: emails.where((e) => e['label'] == 'Trash').length, isSelected: selectedLabel == "Trash"),
           _buildDrawerItem(Icons.people_outline, "Social", count: emails.where((e) => e['label'] == 'Social').length, isSelected: selectedLabel == "Social"),
           _buildDrawerItem(Icons.local_offer_outlined, "Promotions", count: emails.where((e) => e['label'] == 'Promotions').length, isSelected: selectedLabel == "Promotions"),
-          _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Updates').length, isSelected: selectedLabel == "Updates"),
+          _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Updates"),
           _buildDrawerItem(Icons.forum_outlined, "Forums", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Forums"),
           const Divider(),
           const Padding(
@@ -364,6 +364,18 @@ class CustomDrawer extends StatelessWidget {
             child: Text("Labels", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
           ),
           ...userLabels.map((label) => _buildDrawerItem(Icons.label, label, count: emails.where((e) => e['label'] == label).length, isSelected: selectedLabel == label)).toList(),
+          const Divider(), // Added Divider
+          ListTile( // Added Logout Button
+            leading: const Icon(Icons.logout, color: Colors.black54),
+            title: const Text('Đăng xuất', style: TextStyle(color: Colors.black87)),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+                (Route<dynamic> route) => false,
+              );
+            },
+          ),
         ],
       ),
     );

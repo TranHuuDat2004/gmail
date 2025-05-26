@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+//import 'package:firebase_auth/firebase_auth.dart';
+//import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:gmail/main.dart'; // Added for direct navigation to GmailUI
 import 'register.dart';
 
 class LoginPage extends StatefulWidget {
@@ -11,7 +12,7 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController(); // Changed from _emailController
   final TextEditingController _passwordController = TextEditingController();
   String? _error;
   bool _isLoading = false;
@@ -19,8 +20,8 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  //final FirebaseAuth _auth = FirebaseAuth.instance;
+  //final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -39,38 +40,58 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   @override
   void dispose() {
     _controller.dispose();
-    _emailController.dispose();
+    _phoneController.dispose(); // Changed from _emailController
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
+    // For testing: Directly navigate to GmailUI
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => GmailUI()),
+    );
+    return;
+
+    // Original login logic (commented out for now as per request)
+    /*
     if (!mounted) return;
     setState(() {
       _error = null;
       _isLoading = true;
     });
 
-    final String email = _emailController.text.trim();
+    final String phoneNumber = _phoneController.text.trim(); // Changed from email
     final String password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (phoneNumber.isEmpty || password.isEmpty) { // Changed from email
       setState(() {
-        _error = 'Email và Mật khẩu không được để trống.';
+        _error = 'Số điện thoại và Mật khẩu không được để trống.'; // Changed message
         _isLoading = false;
       });
       return;
     }
 
     try {
-      print('Attempting login for: $email');
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      print("Signed in successfully: ${userCredential.user?.uid}");
+      print('Attempting login for: $phoneNumber'); // Changed from email
+      // Note: Firebase phone authentication is more complex than email/password.
+      // This simplified version won't work directly with Firebase phone auth.
+      // For a real implementation, you'd use _auth.signInWithPhoneNumber or a custom method.
+      // For now, we'll assume a placeholder for direct navigation.
+      // UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      //   email: phoneNumber, // This would need to be adapted for phone
+      //   password: password,
+      // );
+      // print("Signed in successfully: ${userCredential.user?.uid}");
+      // await _processSuccessfulLogin(userCredential.user!);
 
-      await _processSuccessfulLogin(userCredential.user!);
+      // Placeholder for successful "login" for testing
+       if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => GmailUI()),
+          );
+        }
 
     } on FirebaseAuthException catch (e) {
       print('FirebaseAuthException: ${e.code} - ${e.message}');
@@ -78,13 +99,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         setState(() {
           switch (e.code) {
             case 'user-not-found':
-              _error = 'Không tìm thấy người dùng với email này.';
+              _error = 'Không tìm thấy người dùng với số điện thoại này.'; // Changed message
               break;
             case 'wrong-password':
               _error = 'Sai mật khẩu.';
               break;
-            case 'invalid-email':
-              _error = 'Định dạng email không hợp lệ.';
+            case 'invalid-email': // This case might become irrelevant or change with phone auth
+              _error = 'Định dạng số điện thoại không hợp lệ.'; // Changed message
               break;
             case 'invalid-credential':
                _error = 'Thông tin đăng nhập không đúng.'; break;
@@ -107,9 +128,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         });
       }
     }
+    */
   }
 
-  Future<void> _processSuccessfulLogin(User user) async {
+  /*Future<void> _processSuccessfulLogin(User user) async {
     if (!mounted) return;
     print("Login successful for UID: ${user.uid}. Fetching Firestore data (if any)...");
     String displayName = user.displayName ?? "Người dùng";
@@ -133,7 +155,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Đăng nhập thành công! Xin chào ${displayName}.')),
           );
-          _emailController.clear();
+          _phoneController.clear(); // Changed from _emailController
           _passwordController.clear();
           FocusScope.of(context).unfocus();
         }
@@ -144,13 +166,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Đăng nhập thành công Auth! Lỗi tải chi tiết người dùng Firestore.')),
             );
-             _emailController.clear();
+             _phoneController.clear(); // Changed from _emailController
              _passwordController.clear();
              FocusScope.of(context).unfocus();
             // AuthGate vẫn sẽ xử lý chuyển màn hình vì đăng nhập Auth thành công.
           }
     }
-  }
+  }*/
 
 
   @override
@@ -199,19 +221,29 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 24),
                   TextField(
-                    controller: _emailController,
+                    controller: _phoneController, // Changed from _emailController
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF1A73E8))),
-                    keyboardType: TextInputType.emailAddress,
+                        labelText: 'Số điện thoại', // Changed label
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.phone_outlined, color: Color(0xFF1A73E8)), // Changed icon
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
+                    keyboardType: TextInputType.phone, // Changed keyboard type
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _passwordController,
+                    cursorColor: Colors.grey, // Added cursor color
                     decoration: const InputDecoration(
                         labelText: 'Mật khẩu',
-                        prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8))),
+                        labelStyle: TextStyle(color: Colors.grey), // Added label style
+                        prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        ),
                     obscureText: true,
                     enabled: !_isLoading,
                   ),
