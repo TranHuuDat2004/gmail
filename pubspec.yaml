@@ -12,7 +12,7 @@ dependencies:
 
   # Firebase - Sử dụng BoM (Bill of Materials)
   # Chỉ định phiên bản firebase_core, nó sẽ hoạt động như BoM
-  firebase_core: ^2.27.0 # Đây là phiên bản BoM của bạn
+  firebase_core: ^3.13.1 # Đây là phiên bản BoM của bạn
 
   # Các dịch vụ Firebase khác sẽ tự động lấy phiên bản tương thích với BoM
   firebase_auth: # Không cần chỉ định phiên bản
