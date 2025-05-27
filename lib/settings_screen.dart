@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'profile_screen.dart'; // Dẫn đến ProfileScreen
 import 'change_password_screen.dart'; // Dẫn đến ChangePasswordScreen
+import 'notification_settings_screen.dart';
 // import 'two_fa_screen.dart'; // Bạn sẽ tạo màn hình này sau nếu cần
 // import 'notification_settings_screen.dart';
 // import 'display_settings_screen.dart';
@@ -70,8 +71,10 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Cài đặt âm thanh, rung, ưu tiên'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Cài đặt Thông báo")));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()),
+              );
             },
           ),
           const Divider(height: 1),
