@@ -11,7 +11,7 @@ import 'login.dart';
 import 'display_settings_screen.dart'; // Import display settings screen
 import 'auto_answer_mode_screen.dart'; // Import auto answer mode screen
 import 'label_screen.dart';
-
+import 'settings_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -494,6 +494,30 @@ class CustomDrawer extends StatelessWidget {
           ),
           ...userLabels.map((label) => _buildDrawerItem(Icons.label, label, count: emails.where((e) => e['label'] == label).length, isSelected: selectedLabel == label)).toList(),
           const Divider(), // Added Divider
+
+// 👇👇👇 MỤC CÀI ĐẶT ĐÃ ĐƯỢC THÊM VÀO ĐÂY 👇👇👇
+          ListTile(
+            leading: const Icon(Icons.settings_outlined, color: Colors.black54),
+            title: const Text('Cài đặt', style: TextStyle(color: Colors.black87)),
+            onTap: () {
+              Navigator.pop(context); // Đóng drawer trước
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+          ),
+           ListTile( // Ví dụ thêm mục Trợ giúp & Phản hồi
+            leading: const Icon(Icons.help_outline, color: Colors.black54),
+            title: const Text('Trợ giúp & phản hồi', style: TextStyle(color: Colors.black87)),
+            onTap: () {
+              Navigator.pop(context); // Đóng drawer
+              // TODO: Điều hướng đến màn hình Trợ giúp & Phản hồi thực tế
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Trợ giúp & Phản hồi")));
+            },
+          ),
+
+          
           ListTile( // Added Logout Button
             leading: const Icon(Icons.logout, color: Colors.black54),
             title: const Text('Đăng xuất', style: TextStyle(color: Colors.black87)),
@@ -505,6 +529,7 @@ class CustomDrawer extends StatelessWidget {
               );
             },
           ),
+          
         ],
       ),
     );
