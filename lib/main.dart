@@ -1,9 +1,6 @@
 // lib/main.dart
 
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:gmail/firebase_options.dart';
 import 'profile_screen.dart'; // Import the new profile screen
 //import 'advanced_search_dialog.dart';
 import 'search_overlay_screen.dart';
@@ -12,11 +9,10 @@ import 'display_settings_screen.dart'; // Import display settings screen
 import 'auto_answer_mode_screen.dart'; // Import auto answer mode screen
 import 'label_screen.dart';
 import 'settings_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Removed Firebase.initializeApp call
   runApp(const MyApp());
 }
 
@@ -27,7 +23,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AuthGate(),
+      home: AuthGate(), // AuthGate will now directly return GmailUI or LoginPage
     );
   }
 }
@@ -35,20 +31,24 @@ class MyApp extends StatelessWidget {
 class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasData) {
-          return GmailUI();
-        }
-        return const LoginPage();
-      },
-    );
+    // Simplified AuthGate: Directly return GmailUI as Firebase is removed.
+    // If LoginPage should be the default, this can be changed.
+    return GmailUI();
+    // Original Firebase-dependent StreamBuilder removed:
+    // return StreamBuilder<User?>(
+    //   stream: FirebaseAuth.instance.authStateChanges(),
+    //   builder: (context, snapshot) {
+    //     if (snapshot.connectionState == ConnectionState.waiting) {
+    //       return const Scaffold(
+    //         body: Center(child: CircularProgressIndicator()),
+    //       );
+    //     }
+    //     if (snapshot.hasData) {
+    //       return GmailUI();
+    //     }
+    //     return const LoginPage();
+    //   },
+    // );
   }
 }
 
@@ -66,12 +66,21 @@ class _GmailUIState extends State<GmailUI> {
 
   final List<String> userLabels = ["Work", "Family"];
 
+  // Callback for updating labels from LabelManagementScreen
+  void _updateUserLabels(List<String> updatedLabels) {
+    setState(() {
+      userLabels.clear();
+      userLabels.addAll(updatedLabels);
+      // userLabels.sort(); // Optional: sort labels
+    });
+  }
+
   final List<Map<String, dynamic>> emails = [
     {
       "sender": "Amazon",
       "subject": "Your order has been shipped!",
       "time": "8:30 AM",
-      "avatar": "images/amazon.png",
+      "avatar": "assets/images/amazon.png", // Corrected path
       "preview": "Your package is on the way! Track your shipment here...",
       "hasAttachment": true,
       "label": "Inbox",
@@ -80,7 +89,7 @@ class _GmailUIState extends State<GmailUI> {
       "sender": "Steam",
       "subject": "New game discounts available",
       "time": "7:45 AM",
-      "avatar": "images/steam.png",
+      "avatar": "assets/images/steam.png", // Corrected path
       "preview": "Check out the latest deals on your wishlist games!",
       "hasAttachment": false,
       "label": "Promotions",
@@ -90,13 +99,19 @@ class _GmailUIState extends State<GmailUI> {
       "sender": "Boss",
       "subject": "Project update",
       "time": "Yesterday",
-      "avatar": "images/google.png",
+      "avatar": "assets/images/Google.png", // Corrected path
       "preview": "Please send the latest report by EOD.",
       "hasAttachment": true,
       "label": "Work",
       "starred": false,
     },
-    // ...other emails...
+    // ...other emails... Ensure all "avatar" paths here also start with "assets/images/"
+    // For example, if you have an entry for "mahiru.png", it should be:
+    // {
+    //   ...
+    //   "avatar": "assets/images/mahiru.png",
+    //   ...
+    // },
   ];
 
   @override
@@ -161,7 +176,7 @@ class _GmailUIState extends State<GmailUI> {
                     );
                   },
                   child: CircleAvatar(
-                    backgroundImage: AssetImage("images/mahiru.png"),
+                    backgroundImage: AssetImage("assets/images/mahiru.png"),
                     radius: 18,
                   ),
                 ),
@@ -180,23 +195,29 @@ class _GmailUIState extends State<GmailUI> {
         },
         userLabels: userLabels,
         emails: emails,
+        onUserLabelsUpdated: _updateUserLabels, // Pass the callback here
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 20, right: 16, top: 8, bottom: 4), // Added right padding for the icon button
+            padding: const EdgeInsets.only(left: 18.0, right: 12.0, top: 8.0, bottom: 12.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  selectedLabel,
-                  style: const TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w500),
+                  selectedLabel.toUpperCase(),
+                  style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500),
                 ),
                 IconButton(
-                  icon: Icon(isDetailedView ? Icons.view_stream : Icons.view_list),
-                  color: Colors.black54,
-                  tooltip: isDetailedView ? 'Show basic view' : 'Show detailed view',
+                  icon: Icon(
+                    isDetailedView ? Icons.view_list_outlined : Icons.view_comfortable_outlined,
+                    color: Colors.black54,
+                    size: 22, // Slightly increased size for better visibility
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: isDetailedView ? 'Switch to compact view' : 'Switch to comfortable view',
                   onPressed: () {
                     setState(() {
                       isDetailedView = !isDetailedView;
@@ -207,176 +228,36 @@ class _GmailUIState extends State<GmailUI> {
             ),
           ),
           Expanded(
-            child: Container(
-              color: Colors.white,
-              child: ListView.builder(
-                itemCount: filteredEmails.length,
-                itemBuilder: (context, index) {
-                  final email = filteredEmails[index];
-                  final bool isUnread = email["unread"] ?? true;
-                  // Conditional rendering based on isDetailedView will be implemented next
-                  if (isDetailedView) {
-                    // DETAILED VIEW (current implementation)
-                    return ListTile(
-                      leading: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                          );
-                        },
-                        child: email["avatar"] != null
-                            ? CircleAvatar(
-                                backgroundColor: Colors.transparent,
-                                backgroundImage: AssetImage(email["avatar"]),
-                              )
-                            : CircleAvatar(
-                                backgroundColor: Colors.blue[100],
-                                child: Text(
-                                  (email["sender"] ?? "").isNotEmpty ? email["sender"][0].toUpperCase() : "?",
-                                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+            child: ListView.builder(
+              itemCount: filteredEmails.length,
+              itemBuilder: (context, index) {
+                final email = filteredEmails[index];
+                // bool isStarred = email['starred'] == true; // Moved into a StatefulWidget for the ListTile
+                bool isUnread = email["read"] == false;
+
+                return EmailListItem(
+                  email: email,
+                  isDetailedView: isDetailedView,
+                  isUnread: isUnread,
+                  onTap: () {
+                    setState(() {
+                      email["read"] = true; // Mark as read on tap
+                    });
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EmailDetailScreen(email: email),
                       ),
-                      title: Text(
-                        email["sender"] ?? '',
-                        style: TextStyle(
-                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                          color: Colors.black87,
-                          fontSize: 16,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            email["subject"] ?? '',
-                            style: TextStyle(
-                              fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                              color: Colors.black87,
-                              fontSize: 15,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (email["preview"] != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2.0),
-                              child: Text(
-                                email["preview"],
-                                style: const TextStyle(color: Colors.black45, fontSize: 13),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                      trailing: SizedBox(
-                        height: 48,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              email["time"] ?? '',
-                              style: const TextStyle(color: Colors.black54, fontSize: 13),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                email["starred"] == true ? Icons.star : Icons.star_border,
-                                color: email["starred"] == true ? Colors.amber : Colors.grey,
-                                size: 22,
-                              ),
-                              splashColor: Colors.transparent,
-                              highlightColor: Colors.transparent,
-                              hoverColor: Colors.transparent,
-                              onPressed: () {
-                                setState(() {
-                                  email["starred"] = !(email["starred"] ?? false);
-                                });
-                              },
-                              tooltip: email["starred"] == true ? 'Unstar' : 'Star',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      onTap: () {
-                        setState(() {
-                          email["unread"] = false;
-                        });
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
-                        );
-                      },
-                      tileColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      shape: const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
                     );
-                  } else {
-                    // BASIC VIEW
-                    return ListTile(
-                      leading: GestureDetector(
-                         onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                          );
-                        },
-                        child: email["avatar"] != null
-                            ? CircleAvatar(
-                                backgroundColor: Colors.transparent,
-                                backgroundImage: AssetImage(email["avatar"]),
-                              )
-                            : CircleAvatar(
-                                backgroundColor: Colors.blue[100],
-                                child: Text(
-                                  (email["sender"] ?? "").isNotEmpty ? email["sender"][0].toUpperCase() : "?",
-                                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                      ),
-                      title: Text(
-                        email["sender"] ?? '',
-                        style: TextStyle(
-                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                          color: Colors.black87,
-                          fontSize: 16,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        email["subject"] ?? '',
-                        style: TextStyle(
-                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                          color: Colors.black54, // Slightly dimmer for basic view subject
-                          fontSize: 14,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      trailing: Text(
-                        email["time"] ?? '',
-                        style: const TextStyle(color: Colors.black54, fontSize: 13),
-                      ),
-                      onTap: () {
-                        setState(() {
-                          email["unread"] = false;
-                        });
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
-                        );
-                      },
-                      tileColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // Adjusted padding for basic view
-                      shape: const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))),
-                    );
-                  }
-                },
-              ),
+                  },
+                  onStarPressed: (bool newStarState) {
+                    setState(() {
+                      email['starred'] = newStarState;
+                      // Here you would typically also update your backend or persistent storage
+                    });
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -401,14 +282,16 @@ class CustomDrawer extends StatelessWidget {
   final String selectedLabel;
   final Function(String) onLabelSelected;
   final List<String> userLabels;
-  final List<Map<String, dynamic>> emails; // added
+  final List<Map<String, dynamic>> emails;
+  final Function(List<String>) onUserLabelsUpdated; // Added for label management
 
   const CustomDrawer({
     super.key,
     required this.selectedLabel,
     required this.onLabelSelected,
     required this.userLabels,
-    required this.emails, // added
+    required this.emails,
+    required this.onUserLabelsUpdated, // Added for label management
   });
 
   @override
@@ -437,7 +320,7 @@ class CustomDrawer extends StatelessWidget {
           _buildDrawerItem(Icons.drafts_outlined, "Drafts", count: emails.where((e) => e['label'] == 'Drafts').length, isSelected: selectedLabel == "Drafts"),
           _buildDrawerItem(Icons.delete_outline, "Trash", count: emails.where((e) => e['label'] == 'Trash').length, isSelected: selectedLabel == "Trash"),
           _buildDrawerItem(Icons.local_offer_outlined, "Promotions", count: emails.where((e) => e['label'] == 'Promotions').length, isSelected: selectedLabel == "Promotions"),
-          _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Updates"),
+          _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums').length, isSelected: selectedLabel == "Updates"), // Assuming 'Forums' was a typo for 'Updates' label in emails data
           const Divider(),
           ListTile( // Added Display Settings Button
             leading: const Icon(Icons.settings_display, color: Colors.black54),
@@ -476,17 +359,21 @@ class CustomDrawer extends StatelessWidget {
                   tooltip: 'Thêm label',
                   onPressed: () async {
                     Navigator.pop(context); // Đóng Drawer
-                    await Navigator.push(
+                    final result = await Navigator.push( // Changed to await result
                       context,
                       MaterialPageRoute(
                         builder: (context) => LabelManagementScreen(
-                          currentLabels: userLabels,
+                          currentLabels: List<String>.from(userLabels), // Pass a copy
                           onLabelsUpdated: (updatedLabels) {
-                            // Cập nhật lại label nếu cần
+                            // This callback within LabelManagementScreen itself is fine.
+                            // The important part is how CustomDrawer receives the final list.
                           },
                         ),
                       ),
                     );
+                    if (result is List<String>) { // Check if result is a list of strings
+                        onUserLabelsUpdated(result); // Update labels in GmailUI
+                    }
                   },
                 ),
               ],
@@ -495,7 +382,6 @@ class CustomDrawer extends StatelessWidget {
           ...userLabels.map((label) => _buildDrawerItem(Icons.label, label, count: emails.where((e) => e['label'] == label).length, isSelected: selectedLabel == label)).toList(),
           const Divider(), // Added Divider
 
-// 👇👇👇 MỤC CÀI ĐẶT ĐÃ ĐƯỢC THÊM VÀO ĐÂY 👇👇👇
           ListTile(
             leading: const Icon(Icons.settings_outlined, color: Colors.black54),
             title: const Text('Cài đặt', style: TextStyle(color: Colors.black87)),
@@ -516,20 +402,17 @@ class CustomDrawer extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Trợ giúp & Phản hồi")));
             },
           ),
-
-          
           ListTile( // Added Logout Button
             leading: const Icon(Icons.logout, color: Colors.black54),
             title: const Text('Đăng xuất', style: TextStyle(color: Colors.black87)),
             onTap: () async {
-              await FirebaseAuth.instance.signOut();
+              // Removed: await FirebaseAuth.instance.signOut();
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const LoginPage()),
                 (Route<dynamic> route) => false,
               );
             },
           ),
-          
         ],
       ),
     );
@@ -998,8 +881,18 @@ class SearchResultsScreen extends StatelessWidget {
           itemCount: results.length,
           itemBuilder: (context, index) {
             final email = results[index];
+            // Assuming email["avatar"] will now also have the "assets/" prefix if it comes from the main 'emails' list.
+            // If email["avatar"] can be null and you want a default, ensure the default path is correct.
+            String? avatarPath = email["avatar"];
+            if (avatarPath == null || avatarPath.isEmpty) {
+              avatarPath = "assets/images/Google.png"; // Corrected default path
+            } else if (!avatarPath.startsWith("assets/")) {
+              // This case handles if avatar paths from other sources might also be missing the prefix
+              avatarPath = "assets/" + avatarPath;
+            }
+
             return ListTile(
-              leading: CircleAvatar(backgroundImage: AssetImage(email["avatar"] ?? "images/google.png")),
+              leading: CircleAvatar(backgroundImage: AssetImage(avatarPath)),
               title: Text(email["sender"] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(email["subject"] ?? ''),
               onTap: () {
@@ -1125,6 +1018,132 @@ class AdvancedSearchDialog extends StatelessWidget {
           child: const Text("Search"),
         ),
       ],
+    );
+  }
+}
+
+// Add the new StatefulWidget for the list item
+class EmailListItem extends StatefulWidget {
+  final Map<String, dynamic> email;
+  final bool isDetailedView;
+  final bool isUnread;
+  final VoidCallback onTap;
+  final Function(bool) onStarPressed;
+
+  const EmailListItem({
+    super.key,
+    required this.email,
+    required this.isDetailedView,
+    required this.isUnread,
+    required this.onTap,
+    required this.onStarPressed,
+  });
+
+  @override
+  _EmailListItemState createState() => _EmailListItemState();
+}
+
+class _EmailListItemState extends State<EmailListItem> {
+  late bool _isStarred;
+
+  @override
+  void initState() {
+    super.initState();
+    _isStarred = widget.email['starred'] == true;
+  }
+
+  @override
+  void didUpdateWidget(EmailListItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.email['starred'] != oldWidget.email['starred']) {
+      _isStarred = widget.email['starred'] == true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget starIcon = SizedBox( // Wrap IconButton in SizedBox for tighter control
+      width: 24, // Define width for the tap target area
+      height: 24, // Define height for the tap target area
+      child: IconButton(
+        icon: Icon(
+          _isStarred ? Icons.star : Icons.star_border,
+          color: _isStarred ? Colors.amber : Colors.grey,
+          size: 20, // Reduced icon size slightly
+        ),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(), // Use default constraints or tightFor if needed
+        splashRadius: 18, // Reduced splash radius
+        onPressed: () {
+          setState(() {
+            _isStarred = !_isStarred;
+          });
+          widget.onStarPressed(_isStarred);
+        },
+      ),
+    );
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Colors.transparent,
+        backgroundImage: widget.email["avatar"] != null ? AssetImage(widget.email["avatar"]) : null,
+        child: widget.email["avatar"] == null
+            ? Text(
+                (widget.email["sender"] ?? "?")[0].toUpperCase(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              )
+            : null,
+      ),
+      title: Text(
+        widget.email["sender"] ?? '',
+        style: TextStyle(
+          fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+          color: Colors.black87,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text( 
+            widget.email["subject"] ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+              color: widget.isUnread ? Colors.black87 : Colors.black54,
+            ),
+          ),
+          if (widget.isDetailedView)
+            Text(
+              widget.email["preview"] ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: widget.isUnread ? Colors.black54 : Colors.grey[600],
+              ),
+            ),
+        ],
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.email['time'] ?? '',
+            style: TextStyle(
+              fontSize: 12,
+              color: widget.isUnread ? Theme.of(context).primaryColor : Colors.grey[600],
+              fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          const SizedBox(height: 6), // Changed from 2 to 8
+          starIcon,
+        ],
+      ),
+      onTap: widget.onTap,
     );
   }
 }

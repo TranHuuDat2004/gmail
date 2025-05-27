@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-//import 'package:firebase_auth/firebase_auth.dart';
-//import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:gmail/main.dart'; // Added for direct navigation to GmailUI
 import 'register.dart';
 
@@ -19,9 +17,6 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
-
-  //final FirebaseAuth _auth = FirebaseAuth.instance;
-  //final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {

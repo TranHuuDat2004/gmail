@@ -10,19 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Firebase - Sử dụng BoM (Bill of Materials)
-  # Chỉ định phiên bản firebase_core, nó sẽ hoạt động như BoM
-  firebase_core: ^3.13.1 # Đây là phiên bản BoM của bạn
-
-  # Các dịch vụ Firebase khác sẽ tự động lấy phiên bản tương thích với BoM
-  firebase_auth: # Không cần chỉ định phiên bản
-  cloud_firestore: # Không cần chỉ định phiên bản
-  firebase_storage: # Không cần chỉ định phiên bản
-  firebase_messaging: # Không cần chỉ định phiên bản
-  # Nếu bạn cần một phiên bản cụ thể cho một plugin nào đó (ít phổ biến), bạn vẫn có thể ghi,
-  # nhưng BoM sẽ cố gắng giữ tính tương thích.
-
-  image_picker: ^1.1.2 # Phiên bản này ổn, nhưng hãy kiểm tra phiên bản mới nhất trên pub.dev
+  image_picker: ^1.1.2 
 
   # Các gói khác
   http: ^1.2.0
@@ -34,7 +22,7 @@ dev_dependencies:
   flutter_lints: ^3.0.0 # Hoặc ^4.0.0 nếu có
 
 flutter:
-  uses-material-design: true # Nên đặt dòng này ở đầu khối flutter
+  uses-material-design: true
   assets:
     - assets/images/
     - assets/icons/

@@ -37,7 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
     _userAvatarImage =
-        const AssetImage('images/mahiru.png'); // Đảm bảo ảnh này tồn tại
+        const AssetImage('assets/images/mahiru.png'); // Đảm bảo ảnh này tồn tại
   }
 
   Future<void> _navigateToEditProfile() async {

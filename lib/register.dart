@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -20,9 +18,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -68,95 +63,27 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       return;
     }
 
-    try {
-      print('BẮT ĐẦU QUÁ TRÌNH ĐĂNG KÝ CHO: $email');
-      UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+    // Simulate successful registration without Firebase
+    print('ĐĂNG KÝ MÔ PHỎNG (KHÔNG FIREBASE) CHO: $email, Tên: $name');
+
+    // Simulate a short delay for UX, similar to a network request
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đăng ký thành công! Chào mừng $name. Vui lòng đăng nhập.')),
       );
-      final User? newUser = userCredential.user;
-      print("Đăng ký Auth thành công! User ID: ${newUser?.uid}");
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    }
 
-      if (newUser != null) {
-        print("CHUẨN BỊ LƯU DỮ LIỆU VÀO FIRESTORE CHO UID: ${newUser.uid}");
-        try {
-          await _firestore.collection('users').doc(newUser.uid).set({
-            'name': name,
-            'email': email,
-            'phone': phone,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          print("LƯU FIRESTORE THÀNH CÔNG!");
-        } catch (firestoreError) {
-          print("!!! LỖI KHI LƯU VÀO FIRESTORE: $firestoreError");
-          // Ngay cả khi lỗi Firestore, tài khoản Auth đã được tạo.
-          // Cân nhắc việc xóa tài khoản Auth nếu lưu Firestore là bắt buộc.
-          // Hoặc thông báo cho người dùng và cho phép họ thử lại sau.
-          if (mounted) {
-            setState(() {
-              _error = "Đăng ký thành công nhưng có lỗi lưu thông tin chi tiết.";
-              // Không dừng _isLoading ở đây để finally xử lý
-            });
-            // Không return, để finally chạy
-          }
-        }
-
-        try {
-          await newUser.updateDisplayName(name);
-          print("Updated Auth display name.");
-        } catch (profileError) {
-          print("Error updating Auth display name: $profileError");
-        }
-
-        if (mounted && _error == null) { // Chỉ điều hướng nếu không có lỗi lưu Firestore
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đăng ký thành công! Chào mừng $name. Vui lòng đăng nhập.')),
-          );
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const LoginPage()),
-          );
-        }
-      } else {
-        print("!!! LỖI: User mới tạo là null sau khi createUserWithEmailAndPassword");
-        if (mounted) {
-          setState(() {
-            _error = "Lỗi tạo tài khoản, không nhận được thông tin người dùng.";
-          });
-        }
-      }
-    } on FirebaseAuthException catch (e) {
-      print('FirebaseAuthException: ${e.code} - ${e.message}');
-      if (mounted) {
-        setState(() {
-          switch (e.code) {
-            case 'invalid-email':
-              _error = 'Định dạng email không hợp lệ.';
-              break;
-            case 'email-already-in-use':
-              _error = 'Email này đã được sử dụng.';
-              break;
-            case 'weak-password':
-              _error = 'Mật khẩu quá yếu.';
-              break;
-            default:
-              _error = e.message ?? 'Lỗi đăng ký không xác định.';
-          }
-        });
-      }
-    } catch (e) {
-      print('Unexpected error during registration: $e');
-      if (mounted) {
-        setState(() {
-          _error = 'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.';
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    // It's important to set _isLoading to false even if navigation happens,
+    // in case the widget is somehow still mounted or for cleanup.
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -273,9 +200,9 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                               textAlign: TextAlign.center,
                             ),
                           )
-                        : const SizedBox(height: 18),
+                        : const SizedBox(height: 18), // This SizedBox was part of the original logic to maintain space
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 10), // Adjusted from 18 to 10 based on original error display logic
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 400),
                     curve: Curves.easeInOut,
@@ -330,6 +257,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                         onPressed: _isLoading
                             ? null
                             : () {
+                                // Navigate to LoginPage, replacing the current route
                                 Navigator.of(context).pushReplacement(
                                   MaterialPageRoute(builder: (_) => const LoginPage()),
                                 );
@@ -347,7 +275,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  const Text( // Replaced invalid string with an empty string
                     '',
                     textAlign: TextAlign.center,
                     style: TextStyle(
