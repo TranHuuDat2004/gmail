@@ -10,6 +10,7 @@ import 'search_overlay_screen.dart';
 import 'login.dart';
 import 'display_settings_screen.dart'; // Import display settings screen
 import 'auto_answer_mode_screen.dart'; // Import auto answer mode screen
+import 'label_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -178,7 +179,7 @@ class _GmailUIState extends State<GmailUI> {
           Navigator.pop(context);
         },
         userLabels: userLabels,
-        emails: emails, // Pass emails list into the drawer
+        emails: emails,
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,10 +461,36 @@ class CustomDrawer extends StatelessWidget {
               );
             },
           ),
-          const Divider(), // Added Divider
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-            child: Text("Labels", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Labels",
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add, color: Colors.black45),
+                  tooltip: 'Thêm label',
+                  onPressed: () async {
+                    Navigator.pop(context); // Đóng Drawer
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LabelManagementScreen(
+                          currentLabels: userLabels,
+                          onLabelsUpdated: (updatedLabels) {
+                            // Cập nhật lại label nếu cần
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
           ...userLabels.map((label) => _buildDrawerItem(Icons.label, label, count: emails.where((e) => e['label'] == label).length, isSelected: selectedLabel == label)).toList(),
           const Divider(), // Added Divider
