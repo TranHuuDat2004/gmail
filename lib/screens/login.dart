@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gmail/main.dart'; // Added for direct navigation to GmailUI
+import 'package:gmail/screens/gmail_ui.dart'; // Changed from 'package:gmail/main.dart'
 import 'register.dart';
 
 class LoginPage extends StatefulWidget {
