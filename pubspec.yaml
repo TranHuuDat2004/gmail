@@ -14,13 +14,15 @@ dependencies:
 
   # Các gói khác
   http: ^1.2.0
-  intl: ^0.19.0
-  firebase_core: ^2.24.2 # Added firebase_core
-
+  intl: ^0.20.2
+  firebase_core: ^3.13.1 # Added firebase_core
+  firebase_auth: ^5.5.4
+  cloud_firestore: ^5.6.8
+  firebase_app_check: ^0.3.2+6
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0 # Hoặc ^4.0.0 nếu có
+  flutter_lints: ^5.0.0 # Hoặc ^4.0.0 nếu có
 
 flutter:
   uses-material-design: true

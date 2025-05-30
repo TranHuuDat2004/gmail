@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:gmail/screens/gmail_ui.dart'; // Changed from 'package:gmail/main.dart'
-import 'register.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'register.dart'; // Để điều hướng đến trang đăng ký
+import 'gmail_ui.dart'; // Thêm import cho GmailUI
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,110 +12,93 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
-  final TextEditingController _phoneController = TextEditingController(); // Changed from _emailController
+  final TextEditingController _emailController = TextEditingController(); // Renamed from _phoneController
   final TextEditingController _passwordController = TextEditingController();
   String? _error;
   bool _isLoading = false;
-  late AnimationController _controller;
+  late AnimationController _animationController; // Đổi tên thống nhất
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _animationController = AnimationController( // Đổi tên _controller thành _animationController
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    _fadeAnim = CurvedAnimation(parent: _animationController, curve: Curves.easeInOut);
     _scaleAnim = Tween<double>(begin: 0.95, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
     );
-    _controller.forward();
+    _animationController.forward();
   }
-
   @override
   void dispose() {
-    _controller.dispose();
-    _phoneController.dispose(); // Changed from _emailController
+    _animationController.dispose(); // Đổi tên _controller thành _animationController
+    _emailController.dispose(); // Renamed from _phoneController
     _passwordController.dispose();
     super.dispose();
   }
-
   Future<void> _handleLogin() async {
-    // For testing: Directly navigate to GmailUI
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => GmailUI()),
-    );
-    return;
-
-    // Original login logic (commented out for now as per request)
-    /*
     if (!mounted) return;
     setState(() {
       _error = null;
       _isLoading = true;
     });
 
-    final String phoneNumber = _phoneController.text.trim(); // Changed from email
+    final String email = _emailController.text.trim();
     final String password = _passwordController.text.trim();
 
-    if (phoneNumber.isEmpty || password.isEmpty) { // Changed from email
+    if (email.isEmpty || password.isEmpty) {
       setState(() {
-        _error = 'Số điện thoại và Mật khẩu không được để trống.'; // Changed message
+        _error = 'Email và Mật khẩu không được để trống.';
         _isLoading = false;
       });
       return;
     }
 
     try {
-      print('Attempting login for: $phoneNumber'); // Changed from email
-      // Note: Firebase phone authentication is more complex than email/password.
-      // This simplified version won't work directly with Firebase phone auth.
-      // For a real implementation, you'd use _auth.signInWithPhoneNumber or a custom method.
-      // For now, we'll assume a placeholder for direct navigation.
-      // UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-      //   email: phoneNumber, // This would need to be adapted for phone
-      //   password: password,
-      // );
-      // print("Signed in successfully: ${userCredential.user?.uid}");
-      // await _processSuccessfulLogin(userCredential.user!);
-
-      // Placeholder for successful "login" for testing
-       if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => GmailUI()),
-          );
-        }
-
+      // Thực hiện đăng nhập bằng Firebase Authentication
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      
+      // Nếu đăng nhập thành công, StreamBuilder trong main.dart sẽ tự động xử lý điều hướng
+      // Bạn có thể hiển thị SnackBar nếu muốn, nhưng không cần Navigator.pushReplacement ở đây nữa
+      // vì StreamBuilder sẽ làm điều đó.
+      if (mounted && userCredential.user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đăng nhập thành công!'), duration: Duration(seconds: 1)), // Giảm thời gian SnackBar một chút
+        );
+        // Điều hướng ngay lập tức và xóa các trang trước đó khỏi stack
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => GmailUI()), // Đảm bảo GmailUI không có const nếu là StatefulWidget
+          (Route<dynamic> route) => false,
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      print('FirebaseAuthException: ${e.code} - ${e.message}');
       if (mounted) {
+        String errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
+        if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          errorMessage = 'Email hoặc mật khẩu không đúng.';
+        } else if (e.code == 'invalid-email') {
+          errorMessage = 'Địa chỉ email không hợp lệ.';
+        } else if (e.code == 'user-disabled') {
+          errorMessage = 'Tài khoản này đã bị vô hiệu hóa.';
+        }
+        // Thêm các mã lỗi khác nếu cần
         setState(() {
-          switch (e.code) {
-            case 'user-not-found':
-              _error = 'Không tìm thấy người dùng với số điện thoại này.'; // Changed message
-              break;
-            case 'wrong-password':
-              _error = 'Sai mật khẩu.';
-              break;
-            case 'invalid-email': // This case might become irrelevant or change with phone auth
-              _error = 'Định dạng số điện thoại không hợp lệ.'; // Changed message
-              break;
-            case 'invalid-credential':
-               _error = 'Thông tin đăng nhập không đúng.'; break;
-            default:
-              _error = e.message ?? 'Lỗi xác thực không xác định.';
-          }
+          _error = errorMessage;
         });
       }
     } catch (e) {
-      print('Unexpected error during login: $e');
       if (mounted) {
         setState(() {
-          _error = 'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.';
+          _error = 'Đã xảy ra lỗi không mong muốn: ${e.toString()}';
         });
       }
     } finally {
@@ -123,61 +108,16 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         });
       }
     }
-    */
   }
-
-  /*Future<void> _processSuccessfulLogin(User user) async {
-    if (!mounted) return;
-    print("Login successful for UID: ${user.uid}. Fetching Firestore data (if any)...");
-    String displayName = user.displayName ?? "Người dùng";
-
-    try {
-        DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
-
-        if (userDoc.exists && userDoc.data() != null) {
-            final data = userDoc.data() as Map<String, dynamic>;
-            displayName = data['name'] ?? user.displayName ?? 'Người dùng';
-            final String email = data['email'] ?? user.email ?? 'N/A';
-            final String phone = data['phone'] ?? 'N/A';
-            print("User data fetched: Name=$displayName, Email=$email, Phone=$phone");
-        } else {
-            print("User document not found in Firestore for UID: ${user.uid}, but Auth login successful.");
-        }
-
-        if (mounted) {
-          // AuthGate trong main.dart sẽ xử lý việc hiển thị GmailUI.
-          // Chúng ta chỉ cần thông báo cho người dùng ở đây.
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đăng nhập thành công! Xin chào ${displayName}.')),
-          );
-          _phoneController.clear(); // Changed from _emailController
-          _passwordController.clear();
-          FocusScope.of(context).unfocus();
-        }
-
-    } catch(e) {
-         print("Error fetching Firestore data post-login: $e");
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Đăng nhập thành công Auth! Lỗi tải chi tiết người dùng Firestore.')),
-            );
-             _phoneController.clear(); // Changed from _emailController
-             _passwordController.clear();
-             FocusScope.of(context).unfocus();
-            // AuthGate vẫn sẽ xử lý chuyển màn hình vì đăng nhập Auth thành công.
-          }
-    }
-  }*/
-
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.white, 
+      backgroundColor: Colors.white,
       body: Center(
         child: AnimatedBuilder(
-          animation: _controller,
+          animation: _animationController, // Sử dụng _animationController
           builder: (context, child) => Opacity(
             opacity: _fadeAnim.value,
             child: Transform.scale(
@@ -190,7 +130,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
             margin: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: Colors.white, // Card đăng nhập cũng có nền trắng
+              color: Colors.white,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
@@ -216,29 +156,29 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 24),
                   TextField(
-                    controller: _phoneController, // Changed from _emailController
-                    cursorColor: Colors.grey, // Added cursor color
+                    controller: _emailController, // Ensure this uses the renamed _emailController
+                    cursorColor: Colors.grey,
                     decoration: const InputDecoration(
-                        labelText: 'Số điện thoại', // Changed label
-                        labelStyle: TextStyle(color: Colors.grey), // Added label style
-                        prefixIcon: Icon(Icons.phone_outlined, color: Color(0xFF1A73E8)), // Changed icon
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                        ),
-                    keyboardType: TextInputType.phone, // Changed keyboard type
+                      labelText: 'Email',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF1A73E8)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _passwordController,
-                    cursorColor: Colors.grey, // Added cursor color
+                    cursorColor: Colors.grey,
                     decoration: const InputDecoration(
-                        labelText: 'Mật khẩu',
-                        labelStyle: TextStyle(color: Colors.grey), // Added label style
-                        prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                        ),
+                      labelText: 'Mật khẩu',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                    ),
                     obscureText: true,
                     enabled: !_isLoading,
                   ),
@@ -250,8 +190,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                             padding: const EdgeInsets.only(top: 12, bottom: 6),
                             child: Text(
                               _error!,
-                              style: const TextStyle(
-                                  color: Colors.redAccent, fontSize: 13.5),
+                              style: const TextStyle(color: Colors.redAccent, fontSize: 13.5),
                               textAlign: TextAlign.center,
                             ),
                           )
@@ -266,39 +205,28 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF1A73E8),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: _isLoading ? 2 : 6,
                         shadowColor: const Color(0x331A73E8),
-                        disabledBackgroundColor:
-                            const Color(0xFF1A73E8).withOpacity(0.6),
+                        disabledBackgroundColor: const Color(0xFF1A73E8).withOpacity(0.6),
                         disabledForegroundColor: Colors.white.withOpacity(0.8),
                       ),
                       onPressed: _isLoading ? null : _handleLogin,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         transitionBuilder: (child, animation) =>
-                            FadeTransition(
-                                opacity: animation,
-                                child: ScaleTransition(scale: animation, child: child)),
+                            FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
                         child: _isLoading
                             ? const SizedBox(
-                                key: ValueKey('loader'),
+                                key: ValueKey('loader_login'),
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
-                                ),
+                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                               )
                             : const Text(
                                 'Đăng nhập',
                                 key: ValueKey('login_text'),
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.8,
-                                ),
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.8),
                               ),
                       ),
                     ),
@@ -309,18 +237,15 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     children: [
                       const Text('Chưa có tài khoản?'),
                       TextButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () {
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (_) => const RegisterPage()),
-                                );
-                              },
+                        onPressed: _isLoading ? null : () {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const RegisterPage()),
+                          );
+                        },
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFF1A73E8),
                           textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -328,7 +253,6 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
                 ],
               ),
             ),

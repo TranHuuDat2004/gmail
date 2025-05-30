@@ -1,27 +1,31 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../screens/gmail_ui.dart'; // This will be a new file
-// import 'login.dart'; // Assuming LoginPage might be used by AuthGate in the future
+import 'package:gmail/screens/login.dart';
+import 'package:gmail/screens/gmail_ui.dart'; // Corrected import path
 
 class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
   @override
   Widget build(BuildContext context) {
-    // Simplified AuthGate: Directly return GmailUI as Firebase is removed.
-    // If LoginPage should be the default, this can be changed.
-    return GmailUI();
-    // Original Firebase-dependent StreamBuilder removed:
-    // return StreamBuilder<User?>(
-    //   stream: FirebaseAuth.instance.authStateChanges(),
-    //   builder: (context, snapshot) {
-    //     if (snapshot.connectionState == ConnectionState.waiting) {
-    //       return const Scaffold(
-    //         body: Center(child: CircularProgressIndicator()),
-    //       );
-    //     }
-    //     if (snapshot.hasData) {
-    //       return GmailUI();
-    //     }
-    //     return const LoginPage(); // LoginPage would be imported if used
-    //   },
-    // );
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        if (snapshot.hasData) {
+          // User is logged in
+          return GmailUI(); // Removed const
+        } else {
+          // User is not logged in
+          return const LoginPage();
+        }
+      },
+    );
   }
 }
