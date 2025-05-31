@@ -1,0 +1,33 @@
+// Nội dung file này có thể được đơn giản hóa nếu settings.gradle đã quản lý hết phiên bản plugin.
+// Tuy nhiên, giữ lại ext.kotlin_version và google-services classpath là an toàn.
+buildscript {
+    ext.kotlin_version = '2.0.0'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // AGP và Kotlin plugin classpath được quản lý bởi settings.gradle cho module :app
+        // Chỉ cần google-services ở đây nếu không được định nghĩa trong settings.gradle như một plugin
+        classpath 'com.google.gms:google-services:4.4.1'
+        // Nếu bạn muốn tường minh ext.kotlin_version được dùng bởi các module khác (nếu có)
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version" 
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

@@ -1,8 +1,8 @@
 // lib/features/profile/profile_screen.dart (Hoặc tên file của bạn)
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:gmail/edit_profile_screen.dart'; // Sửa đường dẫn nếu cần
-import 'package:gmail/change_password_screen.dart'; // Sửa đường dẫn
+import 'package:gmail/screens/edit_profile_screen.dart'; // Sửa đường dẫn nếu cần
+import 'package:gmail/screens/change_password_screen.dart'; // Sửa đường dẫn
 // Import các màn hình cài đặt con (bạn sẽ tạo sau)
 // import 'package:gmail/features/settings/notification_settings_screen.dart';
 // import 'package:gmail/features/settings/display_settings_screen.dart';
@@ -37,7 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
     _userAvatarImage =
-        const AssetImage('images/mahiru.png'); // Đảm bảo ảnh này tồn tại
+        const AssetImage('assets/images/mahiru.png'); // Đảm bảo ảnh này tồn tại
   }
 
   Future<void> _navigateToEditProfile() async {
@@ -82,7 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(
           children: [
             Image.asset(
-              'images/Google.png', // Ensure this path is correct and image exists
+              'assets/images/Google.png', // Ensure this path is correct and image exists
               height: 24,
               errorBuilder: (context, error, stackTrace) => const Text('G',
                   style: TextStyle(
