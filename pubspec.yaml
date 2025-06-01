@@ -12,6 +12,7 @@ dependencies:
 
   image_picker: ^1.1.2 
   file_picker: 
+  pinput: ^4.0.0 
 
   # Các gói khác
   http: ^1.2.0

@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 import 'search_overlay_screen.dart';
 import '../widgets/custom_drawer.dart';
 import 'email_detail_screen.dart';
 import 'compose_email_screen.dart';
 import '../widgets/email_list_item.dart';
-// Import other screens/widgets used by GmailUI as needed, for example:
-// import './login.dart'; // If needed for navigation from GmailUI
-// import './settings_screen.dart'; // If needed
 
 class GmailUI extends StatefulWidget {
-  GmailUI({super.key});
+  final User? user; // THÊM TRƯỜNG USER
+
+  GmailUI({super.key, this.user}); // CẬP NHẬT CONSTRUCTOR
 
   @override
   State<GmailUI> createState() => _GmailUIState();
@@ -20,8 +21,80 @@ class _GmailUIState extends State<GmailUI> {
   bool showDetail = false;
   String selectedLabel = "Inbox";
   bool isDetailedView = true; // Added for display mode
+  String? _userPhotoURL; // THÊM BIẾN ĐỂ LƯU AVATAR URL
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // THÊM INSTANCE FIRESTORE
 
   final List<String> userLabels = ["Work", "Family"];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserAvatar(); // GỌI HÀM KHI KHỞI TẠO STATE
+  }
+
+  Future<void> _loadCurrentUserAvatar() async { // THAY ĐỔI: Chuyển thành Future<void> và async
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      // Xử lý trường hợp không có người dùng hiện tại (ví dụ: set _userPhotoURL = null)
+      if (mounted) {
+        setState(() {
+          _userPhotoURL = null;
+        });
+      }
+      return;
+    }
+
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+
+      if (mounted && userDoc.exists) {
+        Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
+        final String? firestoreAvatarUrl = data['avatarUrl'];
+
+        if (firestoreAvatarUrl != null && firestoreAvatarUrl.trim().isNotEmpty) {
+          setState(() {
+            _userPhotoURL = firestoreAvatarUrl;
+          });
+        } else {
+          // Nếu Firestore không có avatarUrl, thử lấy từ Auth (mặc dù ít khả năng hơn nếu bạn quản lý qua Firestore)
+          if (currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
+            setState(() {
+              _userPhotoURL = currentUser.photoURL;
+            });
+          } else {
+            setState(() {
+              _userPhotoURL = null; // Không có avatar nào cả
+            });
+          }
+        }
+      } else {
+        // Không tìm thấy document user trong Firestore hoặc widget unmounted
+        // Thử fallback về photoURL từ Auth nếu có
+        if (mounted && currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
+          setState(() {
+            _userPhotoURL = currentUser.photoURL;
+          });
+        } else if (mounted) {
+          setState(() {
+            _userPhotoURL = null;
+          });
+        }
+      }
+    } catch (e) {
+      // print('Error loading user avatar from Firestore: $e');
+      // Lỗi khi đọc Firestore, thử fallback về photoURL từ Auth nếu có
+      if (mounted && currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
+        setState(() {
+          _userPhotoURL = currentUser.photoURL;
+        });
+      } else if (mounted) {
+        setState(() {
+          _userPhotoURL = null;
+        });
+      }
+    }
+  }
 
   // Callback for updating labels from LabelManagementScreen
   void _updateUserLabels(List<String> updatedLabels) {
@@ -133,8 +206,10 @@ class _GmailUIState extends State<GmailUI> {
                     );
                   },
                   child: CircleAvatar(
-                    backgroundImage: AssetImage("assets/images/mahiru.png"),
                     radius: 18,
+                    backgroundImage: _userPhotoURL != null
+                        ? NetworkImage(_userPhotoURL!) // SỬ DỤNG NETWORKIMAGE NẾU CÓ URL
+                        : AssetImage("assets/images/mahiru.png") as ImageProvider, // FALLBACK VỀ ASSETIMAGE
                   ),
                 ),
               ),

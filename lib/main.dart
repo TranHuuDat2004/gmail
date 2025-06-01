@@ -2,8 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; 
-import 'package:gmail/screens/login.dart'; // THAY 'gmail' BẰNG TÊN PACKAGE CỦA BẠN
-import 'package:gmail/screens/gmail_ui.dart'; // THAY 'gmail' BẰNG TÊN PACKAGE CỦA BẠN
+import 'package:gmail/screens/login.dart'; 
+import 'package:gmail/screens/gmail_ui.dart'; 
 
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, defaultTargetPlatform; // Thêm kDebugMode, defaultTargetPlatform
@@ -20,14 +20,14 @@ void main() async {
   if (kIsWeb) {
     try {
       await FirebaseAppCheck.instance.activate(
-        webProvider: ReCaptchaEnterpriseProvider('6Ld7Y1ArAAAAAM_qsLQA3TAdaOXVZ140wHsxbSXR'), // SITE KEY WEB CỦA BẠN
+        webProvider: ReCaptchaEnterpriseProvider('6Ld7Y1ArAAAAAM_qsLQA3TAdaOXVZ140wHsxbSXR'), // SITE KEY WEB 
       );
       print('Firebase App Check activated successfully for Web with ReCaptchaEnterpriseProvider.');
     } catch (e) {
       print('Error activating Firebase App Check for Web: $e');
     }
   } 
-  // THÊM KHỐI NÀY CHO ANDROID APP CHECK
+  // ANDROID APP CHECK
   else if (defaultTargetPlatform == TargetPlatform.android) { 
     try {
       await FirebaseAppCheck.instance.activate(
