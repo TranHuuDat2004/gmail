@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ADDED IMPORT
 import 'email_detail_screen.dart';
 import '../widgets/email_list_item.dart'; 
 
@@ -34,10 +35,15 @@ class SearchResultsScreen extends StatelessWidget {
                 final email = results[index];
                 bool isUnread = email['read'] == false;
 
+                // Determine if the email is a "sent" item
+                final currentUser = FirebaseAuth.instance.currentUser;
+                final bool isActuallySentItem = currentUser != null && email['senderId'] == currentUser.uid;
+
                 return EmailListItem(
                   email: email,
                   isDetailedView: true, 
                   isUnread: isUnread,
+                  isSentView: isActuallySentItem, // ADDED THIS LINE
                   onTap: () {
                     Navigator.push(
                       context,
