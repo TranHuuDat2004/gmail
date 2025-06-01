@@ -21,27 +21,34 @@ class _GmailUIState extends State<GmailUI> {
   bool showDetail = false;
   String selectedLabel = "Inbox";
   bool isDetailedView = true; // Added for display mode
-  String? _userPhotoURL; // THÊM BIẾN ĐỂ LƯU AVATAR URL
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // THÊM INSTANCE FIRESTORE
+  String? _userPhotoURL; 
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; 
 
   final List<String> userLabels = ["Work", "Family"];
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentUserAvatar(); // GỌI HÀM KHI KHỞI TẠO STATE
+    _loadCurrentUserAvatar(); 
   }
 
-  Future<void> _loadCurrentUserAvatar() async { // THAY ĐỔI: Chuyển thành Future<void> và async
+  Future<void> _loadCurrentUserAvatar({bool forceRefresh = false}) async { // ADDED: forceRefresh parameter
     final User? currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      // Xử lý trường hợp không có người dùng hiện tại (ví dụ: set _userPhotoURL = null)
       if (mounted) {
         setState(() {
           _userPhotoURL = null;
         });
       }
       return;
+    }
+
+    // If not forcing refresh, and avatar already loaded, do nothing.
+    // This is a simple optimization, could be more sophisticated.
+    if (!forceRefresh && _userPhotoURL != null && _userPhotoURL!.isNotEmpty) {
+        // Potentially check if the URL is still valid or if a newer one exists
+        // For now, we assume if it's loaded, it's good unless forced.
+        // return; 
     }
 
     try {
@@ -53,29 +60,21 @@ class _GmailUIState extends State<GmailUI> {
         final String? firestoreAvatarUrl = data['avatarUrl'];
 
         if (firestoreAvatarUrl != null && firestoreAvatarUrl.trim().isNotEmpty) {
-          setState(() {
-            _userPhotoURL = firestoreAvatarUrl;
-          });
-        } else {
-          // Nếu Firestore không có avatarUrl, thử lấy từ Auth (mặc dù ít khả năng hơn nếu bạn quản lý qua Firestore)
-          if (currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
+          // Only update state if the URL has actually changed or if it's a forced refresh
+          if (forceRefresh || _userPhotoURL != firestoreAvatarUrl) {
             setState(() {
-              _userPhotoURL = currentUser.photoURL;
+              _userPhotoURL = firestoreAvatarUrl;
             });
-          } else {
+          }
+        } else {
+          if (forceRefresh || _userPhotoURL != null) { // If old URL existed, now it doesn't
             setState(() {
-              _userPhotoURL = null; // Không có avatar nào cả
+              _userPhotoURL = null; 
             });
           }
         }
       } else {
-        // Không tìm thấy document user trong Firestore hoặc widget unmounted
-        // Thử fallback về photoURL từ Auth nếu có
-        if (mounted && currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
-          setState(() {
-            _userPhotoURL = currentUser.photoURL;
-          });
-        } else if (mounted) {
+         if (mounted && (forceRefresh || _userPhotoURL != null)) { // If old URL existed, now it doesn't
           setState(() {
             _userPhotoURL = null;
           });
@@ -83,12 +82,7 @@ class _GmailUIState extends State<GmailUI> {
       }
     } catch (e) {
       // print('Error loading user avatar from Firestore: $e');
-      // Lỗi khi đọc Firestore, thử fallback về photoURL từ Auth nếu có
-      if (mounted && currentUser.photoURL != null && currentUser.photoURL!.trim().isNotEmpty) {
-        setState(() {
-          _userPhotoURL = currentUser.photoURL;
-        });
-      } else if (mounted) {
+      if (mounted && (forceRefresh || _userPhotoURL != null)) {
         setState(() {
           _userPhotoURL = null;
         });
@@ -199,11 +193,15 @@ class _GmailUIState extends State<GmailUI> {
               Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async { // MODIFIED: Make onTap async
+                    final bool? avatarChanged = await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const ProfileScreen()),
                     );
+                    // If avatarChanged is true, reload the avatar
+                    if (avatarChanged == true && mounted) {
+                      _loadCurrentUserAvatar(forceRefresh: true); // CALL with forceRefresh
+                    }
                   },
                   child: CircleAvatar(
                     radius: 18,

@@ -1,9 +1,10 @@
 // lib/edit_profile_screen.dart
 import 'dart:io'; // Để làm việc với File khi chọn ảnh
 import 'dart:typed_data'; // THÊM: Để làm việc với Uint8List cho web
+import 'package:file_picker/file_picker.dart'; // THAY ĐỔI: Sử dụng file_picker
 import 'package:flutter/foundation.dart'; // THÊM: Để kiểm tra kIsWeb
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart'; // Thêm package này vào pubspec.yaml
+// import 'package:image_picker/image_picker.dart'; // XÓA: Không cần image_picker nữa
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -26,7 +27,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   File? _pickedImageFile; // Để lưu file ảnh đã chọn cho mobile
   Uint8List? _pickedImageBytes; // THÊM: Để lưu bytes ảnh đã chọn cho web
 
-  final ImagePicker _picker = ImagePicker();
+  // final ImagePicker _picker = ImagePicker(); // XÓA: Không cần _picker của image_picker
 
   @override
   void initState() {
@@ -35,31 +36,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // _newAvatarImage = widget.currentAvatar; // Không cần gán ở đây nữa
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage() async { // THAY ĐỔI: Không cần ImageSource nữa
     try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        imageQuality: 80, // Chất lượng ảnh (0-100)
-        maxWidth: 800, // Giới hạn chiều rộng để tránh ảnh quá lớn
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false, // Chỉ cho phép chọn 1 ảnh
       );
 
-      if (pickedFile != null) {
+      if (result != null && result.files.isNotEmpty) {
         if (kIsWeb) {
-          final bytes = await pickedFile.readAsBytes();
-          setState(() {
-            _pickedImageBytes = bytes;
-            _pickedImageFile = null; // Đảm bảo file được clear nếu trước đó là mobile
-          });
+          // Trên web, lấy bytes của file
+          final bytes = result.files.first.bytes;
+          if (bytes != null) {
+            setState(() {
+              _pickedImageBytes = bytes;
+              _pickedImageFile = null; // Đảm bảo file được clear
+            });
+          }
         } else {
-          setState(() {
-            _pickedImageFile = File(pickedFile.path);
-            _pickedImageBytes = null; // Đảm bảo bytes được clear nếu trước đó là web
-          });
+          // Trên mobile, lấy đường dẫn file
+          final path = result.files.first.path;
+          if (path != null) {
+            setState(() {
+              _pickedImageFile = File(path);
+              _pickedImageBytes = null; // Đảm bảo bytes được clear
+            });
+          }
         }
       }
     } catch (e) {
-      // Xử lý lỗi (ví dụ: không có quyền truy cập thư viện ảnh)
-      if (mounted) { // Thêm kiểm tra mounted
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Không thể chọn ảnh: $e')),
         );
@@ -67,36 +73,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  void _showImageSourceActionSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white, // THAY ĐỔI: Đặt nền cho modal bottom sheet thành trắng
-      builder: (BuildContext bc) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Chọn từ thư viện'),
-                onTap: () {
-                  _pickImage(ImageSource.gallery);
-                  Navigator.of(context).pop();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Chụp ảnh mới'),
-                onTap: () {
-                  _pickImage(ImageSource.camera);
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  // void _showImageSourceActionSheet(BuildContext context) { // XÓA: Phương thức này không còn cần thiết với file_picker
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: Colors.white,
+  //     builder: (BuildContext bc) {
+  //       return SafeArea(
+  //         child: Wrap(
+  //           children: <Widget>[
+  //             ListTile(
+  //               leading: const Icon(Icons.photo_library),
+  //               title: const Text('Chọn từ thư viện'),
+  //               onTap: () {
+  //                 _pickImage(ImageSource.gallery);
+  //                 Navigator.of(context).pop();
+  //               },
+  //             ),
+  //             ListTile(
+  //               leading: const Icon(Icons.photo_camera),
+  //               title: const Text('Chụp ảnh mới'),
+  //               onTap: () {
+  //                 _pickImage(ImageSource.camera);
+  //                 Navigator.of(context).pop();
+  //               },
+  //             ),
+  //           ],
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
 
   @override
   void dispose() {
@@ -150,9 +156,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const SizedBox(height: 20), // Thêm khoảng cách từ AppBar
+            const SizedBox(height: 20),
             GestureDetector(
-              onTap: () => _showImageSourceActionSheet(context),
+              onTap: _pickImage, // THAY ĐỔI: Gọi trực tiếp _pickImage
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
@@ -193,7 +199,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: () => _showImageSourceActionSheet(context),
+              onPressed: _pickImage, // THAY ĐỔI: Gọi trực tiếp _pickImage
               child: Text(
                 'Thay đổi ảnh đại diện',
                 style: TextStyle(color: Colors.blue[700], fontSize: 14), // Style cho text button

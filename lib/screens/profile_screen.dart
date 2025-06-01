@@ -36,6 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _currentSecurityPin; // THÊM: Lưu mã PIN hiện tại của người dùng
   int _pinAttempts = 0; // THÊM: Đếm số lần nhập PIN sai
   DateTime? _lockoutEndTime; // THÊM: Thời điểm kết thúc khóa
+  bool _avatarWasUpdatedInSession = false; // ADDED: To track avatar changes
 
   // Thêm biến để quản lý tab đang active
   String _activeTab = "Personal info"; // THAY ĐỔI: Mặc định là "Personal info"
@@ -166,8 +167,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() { _isUploadingAvatar = true; });
         }
         try {
-          // User? currentUser = _auth.currentUser; // Already fetched and checked if null earlier in the method
-          // String oldFileName = '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg'; // Old path style
           String actualFileName = '${DateTime.now().millisecondsSinceEpoch}.jpg'; // Filename without UID prefix
           
           // Corrected path structure to match /avatars/{userId}/{fileName}
@@ -191,6 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (mounted) {
             _userAvatarUrl = downloadUrl;
             _userAvatarImage = NetworkImage(downloadUrl); // Cập nhật để hiển thị ngay
+            _avatarWasUpdatedInSession = true; // CHANGED: Set flag to true
           }
           hasChanges = true;
         } catch (e) {
@@ -219,7 +219,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.black54),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, _avatarWasUpdatedInSession), // CHANGED: Pass flag back
           ),
           title: const Text('Account', style: TextStyle(color: Colors.black87)),
           backgroundColor: Colors.white,
@@ -235,7 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black54),
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(context, _avatarWasUpdatedInSession); // CHANGED: Pass flag back
           },
         ),
         title: const Text('Account', style: TextStyle(color: Colors.black87)), // Bỏ logo Google
