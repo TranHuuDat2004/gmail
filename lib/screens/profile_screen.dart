@@ -112,12 +112,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _is2FAEnabled = data['is2FAEnabled'] ?? false; // THÊM: Tải trạng thái 2FA từ Firestore
         _currentSecurityPin = data['securityPin']; // THÊM: Tải mã PIN hiện tại
 
-        if (_userAvatarUrl != null) {
+        // Khi load avatar, luôn fallback về AssetImage nếu không có avatarUrl
+        if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty) {
           _userAvatarImage = NetworkImage(_userAvatarUrl!);
         } else {
-          // Nếu không có avatarUrl, _userAvatarImage sẽ là null.
-          // CircleAvatar sẽ tự động hiển thị _userInitial.
-          _userAvatarImage = null; 
+          _userAvatarImage = const AssetImage('assets/images/default_avatar.png');
         }
 
         if (_userName.isNotEmpty && _userName != "Đang tải..." && _userName != 'Chưa có tên') {
@@ -278,11 +277,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: CircleAvatar(
-              backgroundColor: activeTabColor, 
-              backgroundImage: _userAvatarImage,
-              child: (_userAvatarImage == null && _userInitial.isNotEmpty)
-                  ? Text(_userInitial,
-                      style: TextStyle(color: isDarkMode ? Colors.black87 : Colors.white, fontSize: 16))
+              backgroundColor: activeTabColor,
+              backgroundImage: _userAvatarImage ?? const AssetImage('assets/images/default_avatar.png'),
+              child: (_userAvatarImage == null || _userAvatarImage is AssetImage)
+                  ? (_userInitial.isNotEmpty
+                      ? Text(_userInitial, style: TextStyle(color: isDarkMode ? Colors.black87 : Colors.white, fontSize: 16))
+                      : Icon(Icons.person, color: isDarkMode ? Colors.black87 : Colors.white, size: 16))
                   : null,
             ),
           ),
@@ -765,7 +765,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Widget leadingWidget;
     if (title == "Avatar") {
       leadingWidget = CircleAvatar(
-        backgroundImage: currentAvatarForDisplay,
+        backgroundImage: currentAvatarForDisplay ?? const AssetImage('assets/images/default_avatar.png'),
         backgroundColor: avatarPlaceholderColor,
         radius: 18,
         child: (currentAvatarForDisplay == null && initialForDisplay != null && initialForDisplay.isNotEmpty)

@@ -383,7 +383,7 @@ class _SearchScreenState extends State<SearchScreen> {
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface,
         elevation: theme.appBarTheme.elevation ?? 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: theme.iconTheme.color),
+          icon: Icon(Icons.arrow_back, color: theme.brightness == Brightness.dark ? theme.iconTheme.color : Colors.grey[800]),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: TextField(
@@ -410,7 +410,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.mic_none, color: theme.iconTheme.color),
+            icon: Icon(Icons.mic_none, color: theme.brightness == Brightness.dark ? theme.iconTheme.color : Colors.grey[800]),
             onPressed: () { /* TODO: Implement voice search */ },
             tooltip: 'Search by voice',
           ),
@@ -453,10 +453,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 itemBuilder: (context, index) {
                   final searchTerm = _recentSearches[index];
                   return ListTile(
-                    leading: Icon(Icons.history, color: theme.iconTheme.color),
+                    leading: Icon(Icons.history, color: theme.brightness == Brightness.dark ? theme.iconTheme.color : Colors.grey[800]),
                     title: Text(searchTerm, style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
                     trailing: IconButton(
-                      icon: Icon(Icons.close, color: theme.iconTheme.color?.withOpacity(0.7)),
+                      icon: Icon(Icons.close, color: theme.brightness == Brightness.dark ? theme.iconTheme.color?.withOpacity(0.7) : Colors.grey[800]),
                       tooltip: "Remove from recent searches",
                       onPressed: () => _deleteRecentSearch(searchTerm),
                     ),

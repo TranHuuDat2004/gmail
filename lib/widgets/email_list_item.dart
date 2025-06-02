@@ -287,18 +287,18 @@ class _EmailListItemState extends State<EmailListItem> {
     
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: avatarUrl != null && avatarUrl.isNotEmpty 
-            ? Colors.transparent // Transparent if image is present
-            : theme.colorScheme.secondaryContainer, // Theme color for avatar background
-        backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty 
+        backgroundColor: avatarUrl != null && avatarUrl.isNotEmpty
+            ? Colors.transparent
+            : theme.colorScheme.secondaryContainer,
+        backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
             ? NetworkImage(avatarUrl)
-            : null,
+            : const AssetImage('assets/images/default_avatar.png'),
         child: (avatarUrl == null || avatarUrl.isEmpty)
             ? Text(
                 initialForAvatar,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSecondaryContainer, // Theme color for avatar text
+                  color: theme.colorScheme.onSecondaryContainer,
                 ),
               )
             : null,

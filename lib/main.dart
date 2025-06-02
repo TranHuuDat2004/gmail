@@ -45,12 +45,6 @@ void main() async {
         // Chờ một chút để đảm bảo App Check đã sẵn sàng trước khi lấy token
         await Future.delayed(const Duration(seconds: 1)); 
         String? token = await FirebaseAppCheck.instance.getToken(true); // Lấy token (buộc làm mới nếu cần)
-        print("--------------------------------------------------------------------");
-        print("AppCheck Debug Token (Android): $token");
-        print("--------------------------------------------------------------------");
-        print("COPY THE ABOVE TOKEN and add it to Firebase Console:");
-        print("Firebase Console > App Check > Your Android App (menu 3 chấm) > Manage debug tokens > Add debug token");
-        print("--------------------------------------------------------------------");
       }
     } catch (e) {
       print('Error activating Firebase App Check for Android or getting debug token: $e');

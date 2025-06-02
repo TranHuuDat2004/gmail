@@ -391,18 +391,19 @@ class _GmailUIState extends State<GmailUI> {
                   },
                   child: CircleAvatar(
                     radius: 18,
-                    backgroundImage: _userPhotoURL != null && _userPhotoURL!.isNotEmpty
+                    backgroundImage: (_userPhotoURL != null && _userPhotoURL!.isNotEmpty)
                         ? NetworkImage(_userPhotoURL!)
-                        : null,
-                    child: (_userPhotoURL == null || _userPhotoURL!.isEmpty) &&
-                            (_currentUserDisplayName != null && _currentUserDisplayName!.isNotEmpty)
-                        ? Text(
-                            _currentUserDisplayName![0].toUpperCase(),
-                            style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18), // Use theme color
-                          )
+                        : const AssetImage('assets/images/default_avatar.png'),
+                    child: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
+                        ? (_currentUserDisplayName != null && _currentUserDisplayName!.isNotEmpty
+                            ? Text(
+                                _currentUserDisplayName![0].toUpperCase(),
+                                style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18),
+                              )
+                            : Icon(Icons.person, color: theme.colorScheme.onPrimary, size: 18))
                         : null,
                     backgroundColor: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
-                        ? theme.colorScheme.primary // Use theme color
+                        ? theme.colorScheme.primary
                         : Colors.transparent,
                   ),
                 ),

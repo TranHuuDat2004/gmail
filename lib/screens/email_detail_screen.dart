@@ -440,9 +440,9 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
           ),
           IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            tooltip: 'Lưu trữ',
-            onPressed: _archiveEmail,
+            icon: const Icon(Icons.label_outline),
+            tooltip: 'Gán nhãn',
+            onPressed: _assignLabels,
             color: appBarIconColor, // Explicitly set color
           ),
           IconButton(

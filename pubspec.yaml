@@ -35,3 +35,4 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/fonts/
+    - assets/images/default_avatar.png
