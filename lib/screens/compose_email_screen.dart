@@ -60,7 +60,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     final email = widget.replyOrForwardEmail!;
     String originalSender = email['sender'] ?? '';
     String originalSubject = email['subject'] ?? '';
-    String originalBody = email['bodyContent'] ?? email['preview'] ?? '';
+    String originalBody = email['body'] ?? email['preview'] ?? '';
 
     String quotedBody =
         "\n\n\n-------- ${widget.composeMode == 'forward' ? 'Forwarded Message' : 'Original Message'} --------\n"
