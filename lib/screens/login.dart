@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-import 'register.dart'; // Để điều hướng đến trang đăng ký
-import 'gmail_ui.dart'; // Thêm import cho GmailUI
+import 'package:gmail/screens/register.dart';
+import 'package:gmail/screens/gmail_ui.dart';
+import 'forgot_password_screen.dart'; // Đảm bảo import này là chính xác
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -110,6 +110,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     }
   }
 
+  void _handleForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -181,6 +188,23 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     ),
                     obscureText: true,
                     enabled: !_isLoading,
+                  ),
+                  // Thêm nút "Quên mật khẩu?"
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _isLoading ? null : _handleForgotPassword,
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF1A73E8),
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Quên mật khẩu?'),
+                      ),
+                    ),
                   ),
                   AnimatedOpacity(
                     opacity: _error != null ? 1 : 0,

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';       // Để lấy UID người dùng hiện tại
 import 'package:cloud_firestore/cloud_firestore.dart'; // Để cập nhật Firestore
 
-import '../widgets/action_button.dart'; // Đảm bảo widget này tồn tại và đúng đường dẫn
-import 'compose_email_screen.dart';   // Để điều hướng khi Reply/Forward
+// import '../widgets/action_button.dart'; // Keep if you plan to use ActionButton soon
+// import 'compose_email_screen.dart';   // Keep if you plan to implement Reply/Forward soon
 
 class EmailDetailScreen extends StatefulWidget {
   final Map<String, dynamic> email; // email này nên có trường 'id' của document
@@ -19,28 +19,124 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   late bool _isStarredLocally;
   late bool _isReadLocally;
   User? _currentUser = FirebaseAuth.instance.currentUser;
+  // String _senderInitialForAvatar = ''; // Will be replaced by _senderInitialLetterForDetail
+
+  // New state variables for fetched sender details
+  String? _fetchedSenderDisplayNameForDetail;
+  String? _fetchedSenderAvatarUrlForDetail;
+  String _senderInitialLetterForDetail = '?'; 
+  bool _isLoadingSenderDetailsForDetail = true;
+  // final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Already defined in _fetchSenderDetailsForDetailScreen
 
   @override
   void initState() {
     super.initState();
-    _isStarredLocally = widget.email['starredBy']?.contains(_currentUser?.uid) ?? false; // Kiểm tra từ mảng starredBy
-    _isReadLocally = widget.email['isReadBy']?[_currentUser?.uid] ?? true; // Mặc định là đã đọc khi mở
 
-    // Tự động đánh dấu là đã đọc trên Firestore khi màn hình được build xong
-    // (chỉ khi nó chưa được đọc bởi người dùng này)
+    _currentUser = FirebaseAuth.instance.currentUser; // Ensure _currentUser is initialized first
+
+    if (_currentUser != null) {
+      final emailLabelsMap = widget.email['emailLabels'] as Map<String, dynamic>?;
+      final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
+      _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
+      
+      final emailIsReadByMap = widget.email['emailIsReadBy'] as Map<String, dynamic>?;
+      _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
+    } else {
+      _isStarredLocally = false;
+      _isReadLocally = false;
+    }
+
+    _fetchSenderDetailsForDetailScreen();
+
     if (!_isReadLocally && _currentUser != null && widget.email['id'] != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           FirebaseFirestore.instance
               .collection('emails')
               .doc(widget.email['id'])
-              .update({'isReadBy.${_currentUser!.uid}': true})
-              .then((_) => print("Email marked as read in Firestore."))
-              .catchError((error) => print("Failed to mark email as read: $error"));
-          setState(() { // Cập nhật UI cục bộ ngay lập tức
-            _isReadLocally = true;
-          });
+              .update({'emailIsReadBy.${_currentUser!.uid}': true})
+              .then((_) {
+                print("Email marked as read in Firestore for user ${_currentUser!.uid}.");
+                if (mounted) {
+                  setState(() { 
+                    _isReadLocally = true;
+                    // Update local email data to reflect the change
+                    if (widget.email['emailIsReadBy'] is Map) {
+                      (widget.email['emailIsReadBy'] as Map<String, dynamic>)[_currentUser!.uid] = true;
+                    } else {
+                       widget.email['emailIsReadBy'] = <String, dynamic>{_currentUser!.uid: true};
+                    }
+                  });
+                }
+              })
+              .catchError((error) {
+                print("Failed to mark email as read for user ${_currentUser!.uid}: $error");
+                // Optionally show a message to the user
+                // ScaffoldMessenger.of(context).showSnackBar(
+                //   SnackBar(content: Text('Failed to mark email as read: $error')),
+                // );
+                return null; 
+              });
         }
+      });
+    }
+  }
+
+  Future<void> _fetchSenderDetailsForDetailScreen() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingSenderDetailsForDetail = true;
+    });
+
+    String? senderId = widget.email['senderId'] as String?;
+    
+    // Fallback display name and avatar from the email document itself (if available)
+    // These might have been populated at send time for non-app users or as a quick cache
+    String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
+                                 widget.email['senderEmail'] as String? ??
+                                 widget.email['from'] as String? ?? // 'from' might contain the email address
+                                 'Không rõ';
+    String fallbackInitial = fallbackDisplayName.isNotEmpty && fallbackDisplayName != 'Không rõ'
+                             ? fallbackDisplayName[0].toUpperCase()
+                             : '?';
+    String? fallbackAvatarUrl = widget.email['senderAvatarUrl'] as String?;
+
+
+    if (senderId != null && senderId.isNotEmpty) {
+      try {
+        DocumentSnapshot senderDoc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
+        if (mounted && senderDoc.exists) {
+          final data = senderDoc.data() as Map<String, dynamic>;
+          _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
+          _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
+          _senderInitialLetterForDetail = (_fetchedSenderDisplayNameForDetail != null && _fetchedSenderDisplayNameForDetail!.isNotEmpty)
+                               ? _fetchedSenderDisplayNameForDetail![0].toUpperCase()
+                               : fallbackInitial; // Use fallback initial if display name is empty after fetch
+        } else {
+          // Sender document not found in 'users' collection, use fallbacks from email
+          _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
+          _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+          _senderInitialLetterForDetail = fallbackInitial;
+        }
+      } catch (e) {
+        print('Error fetching sender details for EmailDetailScreen (email ID ${widget.email['id']}, senderId $senderId): $e');
+        // On error, use fallbacks from email
+        _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
+        _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+        _senderInitialLetterForDetail = fallbackInitial;
+      }
+    } else {
+      // No senderId in the email document, use fallbacks from email
+      // This case might occur for emails from external systems not fully integrated
+      print('No senderId found in email document (email ID ${widget.email['id']}). Using fallback display info.');
+      _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
+      _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+      _senderInitialLetterForDetail = fallbackInitial;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingSenderDetailsForDetail = false;
       });
     }
   }
@@ -48,28 +144,43 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   Future<void> _toggleStarStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newStarStatus = !_isStarredLocally;
+    final String userId = _currentUser!.uid;
+    final String emailId = widget.email['id'];
 
     try {
-      FieldValue updateValue = newStarStatus
-          ? FieldValue.arrayUnion([_currentUser!.uid])
-          : FieldValue.arrayRemove([_currentUser!.uid]);
+      DocumentReference emailRef = FirebaseFirestore.instance.collection('emails').doc(emailId);
+      
+      // Get current labels for the user, or initialize if null
+      Map<String, dynamic> emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels'] ?? {});
+      List<dynamic> currentUserLabels = List<dynamic>.from(emailLabelsMap[userId] ?? []);
 
-      await FirebaseFirestore.instance
-          .collection('emails')
-          .doc(widget.email['id'])
-          .update({'starredBy': updateValue});
+      if (newStarStatus) {
+        if (!currentUserLabels.contains('Starred')) {
+          currentUserLabels.add('Starred');
+        }
+      } else {
+        currentUserLabels.remove('Starred');
+      }
+      
+      emailLabelsMap[userId] = currentUserLabels;
+
+      await emailRef.update({'emailLabels': emailLabelsMap});
 
       if (mounted) {
         setState(() {
           _isStarredLocally = newStarStatus;
-          widget.email['starred'] = newStarStatus; // Cập nhật map widget để UI phản ánh
+          // Update local email data
+          widget.email['emailLabels'] = emailLabelsMap; 
+          // The 'starred' field at the root of the email was a legacy field, 
+          // we now rely on 'Starred' in emailLabels[userId]
+          // widget.email['starred'] = newStarStatus; 
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(newStarStatus ? 'Đã gắn dấu sao' : 'Đã bỏ dấu sao')),
         );
       }
     } catch (e) {
-      print("Error updating star status: $e");
+      print("Error updating star status for user $userId on email $emailId: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi cập nhật dấu sao: $e')),
@@ -80,22 +191,26 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   Future<void> _toggleReadStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
-    final newReadStatus = !_isReadLocally; // Nếu đang là đã đọc -> muốn đánh dấu chưa đọc
+    final newReadStatus = !_isReadLocally;
 
     try {
       await FirebaseFirestore.instance
           .collection('emails')
           .doc(widget.email['id'])
-          .update({'isReadBy.${_currentUser!.uid}': newReadStatus}); // Cập nhật trạng thái đọc của người dùng này
+          .update({'emailIsReadBy.${_currentUser!.uid}': newReadStatus});
 
       if (mounted) {
         setState(() {
           _isReadLocally = newReadStatus;
+          if (widget.email['emailIsReadBy'] is Map) {
+            (widget.email['emailIsReadBy'] as Map)[_currentUser!.uid] = newReadStatus;
+          } else {
+            widget.email['emailIsReadBy'] = {_currentUser!.uid: newReadStatus};
+          }
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(newReadStatus ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc')),
         );
-        // Nếu đánh dấu là chưa đọc, pop và trả về kết quả để GmailUI có thể làm đậm lại
         if (!newReadStatus) {
           Navigator.pop(context, {'markedAsUnread': true, 'emailId': widget.email['id']});
         }
@@ -112,12 +227,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   Future<void> _deleteEmail() async {
     if (_currentUser == null || widget.email['id'] == null) return;
+    final String userId = _currentUser!.uid;
+    final String emailId = widget.email['id'];
+    
     try {
-      // Thêm UID của người dùng vào mảng isTrashedBy
+      // This assumes 'isTrashedBy' is an array field in your Firestore document
       await FirebaseFirestore.instance
           .collection('emails')
-          .doc(widget.email['id'])
-          .update({'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])});
+          .doc(emailId)
+          .update({'isTrashedBy': FieldValue.arrayUnion([userId])});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,12 +254,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   }
 
   void _assignLabels() {
-    if (_currentUser == null || widget.email['id'] == null) return;
-    // TODO: Hiển thị một dialog hoặc màn hình mới cho phép người dùng:
-    // 1. Chọn từ các nhãn hiện có (userLabels có thể lấy từ Firestore/user_profile)
-    // 2. Tạo nhãn mới
-    // 3. Cập nhật trường 'labels.<_currentUser.uid>' của widget.email trên Firestore
-    // Ví dụ: await FirebaseFirestore.instance.collection('emails').doc(widget.email['id']).update({'labels.${_currentUser!.uid}': FieldValue.arrayUnion(['NewLabel'])});
+    // Placeholder for label assignment logic
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Chức năng gán nhãn (chưa triển khai)')),
     );
@@ -150,12 +263,47 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final email = widget.email;
-    String senderDisplayName = email["senderEmail"] ?? email["sender"] ?? 'Không rõ';
-    // Cố gắng lấy phần tên từ email (trước dấu @) nếu chỉ có email
-    if (senderDisplayName.contains('@') && (email["sender"] == null || email["sender"] == email["senderEmail"])) {
-        senderDisplayName = senderDisplayName.split('@')[0];
+    String senderDisplayNameToShow;
+    String senderInitialToShow;
+    String? senderAvatarUrlToShow;
+
+    if (_isLoadingSenderDetailsForDetail) {
+      senderDisplayNameToShow = email["senderDisplayName"] as String? ?? 
+                                email["senderEmail"] as String? ?? 
+                                email["from"] as String? ?? // Check 'from' field
+                                'Đang tải...';
+      senderInitialToShow = '?';
+      senderAvatarUrlToShow = null;
+    } else {
+      senderDisplayNameToShow = _fetchedSenderDisplayNameForDetail ?? 
+                                email["senderEmail"] as String? ?? // Fallback to email if display name is null
+                                'Không rõ';
+      senderInitialToShow = _senderInitialLetterForDetail;
+      senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail;
     }
 
+    // If display name is an email, show only the part before @
+    if (senderDisplayNameToShow.contains('@') && (senderDisplayNameToShow == _fetchedSenderDisplayNameForDetail || senderDisplayNameToShow == email["senderEmail"])) {
+        senderDisplayNameToShow = senderDisplayNameToShow.split('@')[0];
+    }
+
+
+    List<String> toRecipients = List<String>.from(email['toRecipients'] ?? email['to'] ?? []);
+    List<String> ccRecipients = List<String>.from(email['ccRecipients'] ?? email['cc'] ?? []);
+    List<String> bccRecipients = List<String>.from(email['bccRecipients'] ?? email['bcc'] ?? []);
+    
+    String formattedDate;
+    if (email['timestamp'] is Timestamp) {
+      DateTime dt = (email['timestamp'] as Timestamp).toDate();
+      // You can format this further, e.g., using the intl package
+      formattedDate = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+    } else if (email['formattedDate'] is String) {
+      formattedDate = email['formattedDate'];
+    } else {
+      formattedDate = 'Unknown date';
+    }
+    
+    String displayTime = email['time'] ?? ''; // Assuming 'time' is pre-formatted like "04:00" or from timestamp
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -168,7 +316,6 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             icon: const Icon(Icons.archive_outlined),
             tooltip: 'Lưu trữ',
             onPressed: () {
-              // TODO: Implement archive (thêm label 'Archived', xóa khỏi 'Inbox')
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu trữ (Mô phỏng)')));
               Navigator.pop(context, {'archived': true, 'emailId': email['id']});
             },
@@ -179,7 +326,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             onPressed: _deleteEmail,
           ),
           IconButton(
-            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.mark_as_unread_outlined),
+            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.mark_as_unread_outlined), // Corrected icon logic
             tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
             onPressed: _toggleReadStatus,
           ),
@@ -189,31 +336,20 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               if (value == 'assign_labels') {
                 _assignLabels();
               } else if (value == 'move_to') {
-                // TODO: Implement move to folder/label
                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Di chuyển đến... (chưa triển khai)')));
+              } else if (value == 'toggle_star_popup') { // Ensure this value is unique
+                _toggleStarStatus();
               }
-              // Thêm các hành động khác
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
               const PopupMenuItem<String>(
                 value: 'move_to',
                 child: Text('Di chuyển đến'),
               ),
-              // const PopupMenuItem<String>(
-              //   value: 'snooze',
-              //   child: Text('Tạm ẩn'),
-              // ),
               const PopupMenuDivider(),
-              PopupMenuItem<String>( // Thêm Star/Unstar vào menu này cũng là một lựa chọn
-                value: 'toggle_star', // Không trùng với value nào khác
-                onTap: _toggleStarStatus, // Gọi trực tiếp hàm khi nhấn
-                child: Row(
-                  children: [
-                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? Colors.amber.shade700 : Colors.grey),
-                    const SizedBox(width: 8),
-                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao'),
-                  ],
-                ),
+              PopupMenuItem<String>(
+                value: 'toggle_star_popup', // Changed value to avoid conflict if onTap is also used
+                child: Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao'),
               ),
               const PopupMenuItem<String>(
                 value: 'assign_labels',
@@ -232,22 +368,18 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    email["subject"] ?? '(Không có chủ đề)',
-                    style: const TextStyle(
-                        fontSize: 22,
-                        color: Color(0xFF1f1f1f)),
+                    email['subject'] ?? '(Không có tiêu đề)',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: Color(0xFF1f1f1f)),
                   ),
                 ),
                 IconButton(
                   icon: Icon(
                     _isStarredLocally ? Icons.star : Icons.star_border,
-                    color: _isStarredLocally ? Colors.amber.shade700 : Colors.grey,
+                    color: _isStarredLocally ? Colors.amber[600] : Colors.grey[600],
                     size: 24,
                   ),
-                  tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
                   onPressed: _toggleStarStatus,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
                 ),
               ],
             ),
@@ -256,17 +388,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: email["avatar"] != null && (email["avatar"] as String).isNotEmpty
-                      ? AssetImage(email["avatar"])
+                  backgroundColor: Colors.grey[300],
+                  backgroundImage: senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty
+                      ? NetworkImage(senderAvatarUrlToShow)
                       : null,
-                  child: (email["avatar"] == null || (email["avatar"] as String).isEmpty)
+                  child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
                       ? Text(
-                          senderDisplayName.isNotEmpty ? senderDisplayName[0].toUpperCase() : "?",
-                          style: TextStyle(
-                              color: Theme.of(context).primaryColorDark,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 18),
+                          senderInitialToShow,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white70)
                         )
                       : null,
                   radius: 22,
@@ -276,217 +405,99 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        senderDisplayNameToShow, // Use the processed display name
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3c4043)),
+                      ),
                       Row(
                         children: [
-                           Text(
-                            senderDisplayName, // Sử dụng senderDisplayName
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: Colors.black87),
-                          ),
-                          const Spacer(),
                           Text(
-                            email["time"] ?? (email["timestamp"] as Timestamp?)?.toDate().toString().substring(0,16) ?? '', // Hiển thị timestamp nếu có
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black54),
+                            "tới tôi", // This should be dynamic if there are multiple recipients or CC/BCC
+                            style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                           ),
+                          // Potentially add a dropdown icon here if there are CC/BCC or multiple recipients
+                          // Icon(Icons.arrow_drop_down, color: Colors.grey[700], size: 20),
                         ],
-                      ),
-                      const SizedBox(height: 2),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _showMetaDetails = !_showMetaDetails;
-                          });
-                        },
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              "tới tôi ${email['ccRecipients'] != null && (email['ccRecipients'] as List).isNotEmpty ? 'và CC' : ''}",
-                              style: const TextStyle(
-                                color: Colors.black54,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              _showMetaDetails
-                                  ? Icons.arrow_drop_up
-                                  : Icons.arrow_drop_down,
-                              size: 22,
-                              color: Colors.black54,
-                            ),
-                          ],
-                        ),
                       ),
                     ],
                   ),
                 ),
+                Text(
+                  displayTime.isNotEmpty ? displayTime : formattedDate.split(' ')[1].substring(0,5), // Show time part of formattedDate if displayTime is empty
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                ),
               ],
             ),
-            if (_showMetaDetails) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300, width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 16), // Reduced from 20
+            // Meta details (To, Date) - toggleable
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _showMetaDetails = !_showMetaDetails;
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
                   children: [
-                    _buildMetaDetailRow("From", email["senderEmail"] ?? email["sender"] ?? ""),
-                    _buildMetaDetailRow("To", (email["recipients"] as List<dynamic>?)?.join(", ") ?? "you@example.com"),
-                    if (email["ccRecipients"] != null && (email["ccRecipients"] as List).isNotEmpty)
-                      _buildMetaDetailRow("Cc", (email["ccRecipients"] as List<dynamic>).join(", ")),
-                    // Không hiển thị BCC cho người nhận thông thường
-                    _buildMetaDetailRow("Date", (email["timestamp"] as Timestamp?)?.toDate().toLocal().toString().substring(0,19) ?? email["time"] ?? ""),
-                  ],
-                ),
-              ),
-            ],
-            const Divider(height: 32, thickness: 0.5),
-            SelectableText(
-              email["bodyContent"] ?? email["preview"] ?? "(Không có nội dung)",
-              style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.6),
-            ),
-            if (email["attachments"] != null && (email["attachments"] as List).isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 20.0, bottom: 10.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Tệp đính kèm (${(email["attachments"] as List).length})", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[700])),
-                    const SizedBox(height: 8),
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
-                      itemCount: (email["attachments"] as List).length,
-                      itemBuilder: (context, index) {
-                        final attachmentUrl = (email["attachments"] as List)[index] as String;
-                        // Lấy tên file từ URL (cách đơn giản, có thể cần cải thiện)
-                        String fileName = attachmentUrl.split('/').last.split('?').first;
-                        try {
-                          fileName = Uri.decodeComponent(fileName.split('%2F').last);
-                        } catch (_) {}
-
-                        return Card(
-                          elevation: 0.5,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: Colors.grey.shade300)
-                          ),
-                          child: ListTile(
-                            leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.blueAccent),
-                            title: Text(fileName, style: TextStyle(color: Colors.black87, fontSize: 14)),
-                            // subtitle: Text("1.2 MB - PDF"), // TODO: Lấy kích thước và loại file từ metadata Storage
-                            trailing: IconButton(icon: Icon(Icons.download_outlined, color: Colors.grey[700]), onPressed: (){
-                               // TODO: Implement download attachment (có thể dùng url_launcher)
-                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Đang tải $fileName... (Mô phỏng)")));
-                            }),
-                            onTap: () {
-                              // TODO: Implement open/preview attachment
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Mở $fileName... (Mô phỏng)")));
-                            },
-                          ),
-                        );
-                      }
+                    Text(
+                      _showMetaDetails ? "Ẩn chi tiết" : "Hiện chi tiết",
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                    ),
+                    Icon(
+                      _showMetaDetails ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      color: Colors.grey[700], size: 20
                     ),
                   ],
                 ),
               ),
-            const SizedBox(height: 80),
+            ),
+            if (_showMetaDetails)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0, left: 0), // Align with sender info
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (toRecipients.isNotEmpty)
+                      Text("Tới: ${toRecipients.join(', ')}", style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                    if (ccRecipients.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2.0),
+                        child: Text("Cc: ${ccRecipients.join(', ')}", style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                      ),
+                    if (bccRecipients.isNotEmpty) // Usually BCC is not shown to recipients
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2.0),
+                        child: Text("Bcc: ${bccRecipients.join(', ')}", style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: Text("Ngày: $formattedDate", style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                    ),
+                  ],
+                ),
+              ),
+            const Divider(height: 32), // Increased height for more spacing
+            Text(
+              email['body'] ?? '(Không có nội dung)',
+              style: const TextStyle(fontSize: 15, color: Color(0xFF1f1f1f), height: 1.5),
+            ),
+            const SizedBox(height: 80), // Keep space at the bottom
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(
-                top: BorderSide(color: Colors.grey.shade300, width: 0.5))),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            Expanded(
-              child: ActionButton(
-                icon: Icons.reply_outlined,
-                label: "Trả lời",
-                onTap: () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => ComposeEmailScreen(
-                              replyOrForwardEmail: email, composeMode: 'reply')));
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-             Expanded(
-              child: ActionButton(
-                icon: Icons.reply_all_outlined,
-                label: "Trả lời tất cả",
-                onTap: () {
-                   Navigator.push(context, MaterialPageRoute(builder: (context) => ComposeEmailScreen(replyOrForwardEmail: email, composeMode: 'replyAll')));
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ActionButton(
-                icon: Icons.forward_outlined,
-                label: "Chuyển tiếp",
-                onTap: () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => ComposeEmailScreen(
-                              replyOrForwardEmail: email, composeMode: 'forward')));
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+      // Example for bottom action buttons:
+      // bottomNavigationBar: Padding(
+      //   padding: const EdgeInsets.all(8.0),
+      //   child: Row(
+      //     mainAxisAlignment: MainAxisAlignment.spaceAround,
+      //     children: [
+      //       TextButton.icon(icon: Icon(Icons.reply), label: Text('Reply'), onPressed: () {/* Navigate to ComposeEmailScreen with reply data */}),
+      //       TextButton.icon(icon: Icon(Icons.reply_all), label: Text('Reply all'), onPressed: () {/* ... */}),
+      //       TextButton.icon(icon: Icon(Icons.forward), label: Text('Forward'), onPressed: () {/* ... */}),
+      //     ],
+      //   ),
+      // ),
     );
   }
-
-  // ... (Phần còn lại của class _EmailDetailScreenState ở trên) ...
-
-  Widget _buildMetaDetailRow(String label, String value) {
-    if (value.isEmpty) { // Nếu giá trị rỗng thì không hiển thị dòng đó
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0), // Khoảng cách giữa các dòng metadata
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start, // Căn chỉnh văn bản từ đầu nếu value dài
-        children: [
-          SizedBox(
-            width: 60, // Độ rộng cố định cho label (ví dụ: From, To, Date)
-            child: Text(
-              "$label:",
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700], // Màu chữ cho label
-                fontWeight: FontWeight.w500, // Hơi đậm một chút
-              ),
-            ),
-          ),
-          const SizedBox(width: 8), // Khoảng cách giữa label và value
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87, // Màu chữ cho value
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-} // Đóng class _EmailDetailScreenState
+}

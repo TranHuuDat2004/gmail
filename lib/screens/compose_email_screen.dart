@@ -39,7 +39,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
   @override
   void initState() {
-    super.initState(); // Gọi super.initState() ở dòng đầu tiên
+    super.initState();
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email;
     _fromController.text = currentUserEmail ?? "anonymous@example.com";
 
@@ -47,8 +47,8 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       _populateFieldsForReplyForward();
     } else {
        WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-           FocusScope.of(context).requestFocus(_toFocusNode);
+        if (mounted && widget.replyOrForwardEmail == null) { // MODIFIED
+          FocusScope.of(context).requestFocus(_toFocusNode);
         }
       });
     }
@@ -104,7 +104,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   Future<void> _pickAttachments() async {
     if (!mounted) return;
     try {
-      // Sử dụng file_picker để chọn đa dạng file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.any,
@@ -115,20 +114,17 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           _attachments.addAll(result.paths.map((path) => File(path!)).toList());
         });
       } else {
-         // Người dùng có thể đã hủy chọn file, không cần thông báo lỗi
-        print('No files selected or file_picker was cancelled.');
-        // Hoặc nếu bạn muốn dùng image_picker cho ảnh:
-        // final List<XFile> pickedImages = await _imagePicker.pickMultiImage(imageQuality: 70);
-        // if (pickedImages.isNotEmpty) {
-        //   setState(() {
-        //     _attachments.addAll(pickedImages.map((xfile) => File(xfile.path)).toList());
-        //   });
-        // }
+        // User canceled the picker or no files selected
+        if (mounted) { // MODIFIED
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No files selected.')),
+          );
+        }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không thể chọn tệp đính kèm: $e')),
+          SnackBar(content: Text('Error picking files: $e')),
         );
       }
     }
@@ -139,19 +135,25 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
     if (_toController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập địa chỉ người nhận (To).')),
+        const SnackBar(content: Text('Please enter at least one recipient.')), // MODIFIED
       );
       return;
     }
     if (_subjectController.text.trim().isEmpty) {
       final sendAnyway = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Gửi không có tiêu đề?'),
-          content: const Text('Gửi thư này mà không có tiêu đề?'),
+        context: context, // MODIFIED
+        builder: (dialogContext) => AlertDialog( // MODIFIED
+          title: const Text('Send without subject?'),
+          content: const Text('The subject is empty. Send the email anyway?'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('HỦY')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('GỬI')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('SEND'),
+            ),
           ],
         ),
       );
@@ -160,65 +162,149 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
     setState(() { _isSending = true; });
 
+    DocumentReference docRef = FirebaseFirestore.instance.collection('emails').doc(); // Generate ID upfront
+
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       final userEmail = FirebaseAuth.instance.currentUser?.email ?? _fromController.text;
 
-      if (userId == null) {
-        throw Exception("Người dùng chưa đăng nhập.");
+      if (userId == null) { // MODIFIED
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User not logged in. Cannot send email.')),
+          );
+          // No need to set _isSending to false here, finally block will handle it.
+        }
+        // Ensure finally block still runs to set _isSending = false
+        // by not returning from inside the try if possible, or rethrow to be caught by outer catch.
+        // However, for this specific case, returning is fine as `finally` will execute.
+        // The `setState` for `_isSending` should be in `finally` or after this check.
+        // Let's adjust: move `setState` for `_isSending` to be conditional or in finally.
+        // For now, this return is fine, `finally` will execute.
+        return; 
       }
 
       List<String> attachmentUrls = [];
-      // Tải file đính kèm lên Firebase Storage
-      for (File file in _attachments) {
-        String fileName = 'attachments_v2/$userId/${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
-        Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
-        UploadTask uploadTask = storageRef.putFile(file);
-        TaskSnapshot snapshot = await uploadTask;
-        String downloadUrl = await snapshot.ref.getDownloadURL();
-        attachmentUrls.add(downloadUrl);
+      if (_attachments.isNotEmpty) {
+        for (File file in _attachments) {
+          String fileName = file.path.split('/').last; // Declare fileName here
+          try {
+            Reference ref = FirebaseStorage.instance
+                .ref()
+                .child('email_attachments')
+                .child(docRef.id) 
+                .child(fileName);
+            UploadTask uploadTask = ref.putFile(file);
+            TaskSnapshot snapshot = await uploadTask;
+            String downloadUrl = await snapshot.ref.getDownloadURL();
+            attachmentUrls.add(downloadUrl);
+          } catch (e) {
+            print('Error uploading attachment ${file.path}: $e');
+            if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to upload attachment: $fileName. Email will be sent without it.')),
+                );
+            }
+          }
+        }
       }
 
       List<String> toRecipients = _toController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       List<String> ccRecipients = _ccController.text.isNotEmpty ? _ccController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() : [];
       List<String> bccRecipients = _bccController.text.isNotEmpty ? _bccController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() : [];
-      Set<String> involvedUsers = {userEmail, ...toRecipients, ...ccRecipients, ...bccRecipients};
+      
+      // final userId = FirebaseAuth.instance.currentUser?.uid; // Already defined and checked for null
+      // final userEmail = FirebaseAuth.instance.currentUser?.email ?? _fromController.text; // Already defined
+      final String currentSenderId = userId; // Removed the unnecessary '!' operator
 
+      // Initialize email properties
+      Map<String, List<String>> emailLabels = {};
+      Map<String, bool> emailIsReadBy = {};
+      List<String> involvedUserIds = [];
+
+      // 1. Handle Sender
+      // The sender's ID should already be in involvedUserIds if they are a recipient.
+      // If not, add them now. The primary label for the sender is 'Sent'.
+      if (!involvedUserIds.contains(currentSenderId)) {
+        involvedUserIds.add(currentSenderId);
+      }
+      emailLabels[currentSenderId] = ['Sent'];
+      emailIsReadBy[currentSenderId] = true; // Sent mail is initially marked as read for the sender.
+
+      // 2. Handle Recipients (including sender if they are a recipient)
+      Set<String> allUniqueRecipientEmails = {...toRecipients, ...ccRecipients, ...bccRecipients}.toSet();
+
+      for (String recipientEmail in allUniqueRecipientEmails) {
+        if (recipientEmail.isEmpty) continue;
+
+        try {
+          var userQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: recipientEmail)
+              .limit(1)
+              .get();
+
+          if (userQuery.docs.isNotEmpty) {
+            String recipientId = userQuery.docs.first.id;
+
+            if (!involvedUserIds.contains(recipientId)) {
+              involvedUserIds.add(recipientId);
+            }
+
+            // Add 'Inbox' label for this recipient
+            List<String> currentLabels = emailLabels[recipientId] ?? [];
+            if (!currentLabels.contains('Inbox')) {
+              currentLabels.add('Inbox');
+            }
+            emailLabels[recipientId] = currentLabels.toSet().toList(); // Ensure unique labels
+
+            // Emails appearing in an 'Inbox' should be marked as unread for that recipient.
+            // This will override the sender's 'isRead = true' if they send to themselves.
+            emailIsReadBy[recipientId] = false;
+          } else {
+            print('Recipient email $recipientEmail not found in users collection.');
+            // Note: Emails to external users won't have an 'Inbox' label for them in this system
+            // and their recipientId won't be added to involvedUserIds unless they are also users of this app.
+            // The email will still contain their email address in toRecipients/ccRecipients/bccRecipients.
+          }
+        } catch (e) {
+          print('Error fetching recipient UID for $recipientEmail or processing labels: $e');
+          // Consider if this error should halt sending or just skip this recipient's special handling.
+        }
+      }
+      
       final emailData = {
-        'senderId': userId,
-        'senderEmail': userEmail,
-        'recipients': toRecipients,
+        'senderId': currentSenderId, // Use currentSenderId
+        'from': userEmail,
+        'toRecipients': toRecipients,
         'ccRecipients': ccRecipients,
         'bccRecipients': bccRecipients,
-        'involvedUsers': involvedUsers.toList(),
-        'subject': _subjectController.text,
-        'bodyContent': _bodyController.text,
+        'subject': _subjectController.text.trim(),
+        'body': _bodyController.text.trim(),
         'timestamp': FieldValue.serverTimestamp(),
         'attachments': attachmentUrls,
-        'isReadBy': {userId: true},
-        'labels': {userId: ['Sent']},
-        'starredBy': [],
-        'isTrashedBy': [],
+        'emailLabels': emailLabels,
+        'emailIsReadBy': emailIsReadBy,
+        'involvedUserIds': involvedUserIds.toSet().toList(), // Ensure unique UIDs
       };
 
-      DocumentReference docRef = await FirebaseFirestore.instance.collection('emails').add(emailData);
+      await docRef.set(emailData); // MODIFIED - use set with pre-generated docRef
       print('Email saved to Firestore with ID: ${docRef.id}');
 
-      if(mounted) {
+      if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Thư đã được gửi và lưu!')),
+          const SnackBar(content: Text('Email sent successfully!')),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context);
       }
     } catch (e) {
-       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi lưu email: $e')),
-        );
-        print('Error sending email: $e'); // In lỗi ra console để debug
-      }
+       if(mounted) { // MODIFIED
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to send email: $e')),
+          );
+        }
     } finally {
-      if(mounted) {
+      if(mounted) { // MODIFIED
         setState(() { _isSending = false; });
       }
     }
@@ -226,72 +312,75 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
   Future<void> _saveDraft() async {
     if (!mounted) return;
-    if (_bodyController.text.trim().isEmpty && _subjectController.text.trim().isEmpty && _toController.text.trim().isEmpty) {
-      Navigator.pop(context);
+    if (_bodyController.text.trim().isEmpty && _subjectController.text.trim().isEmpty && _toController.text.trim().isEmpty && _attachments.isEmpty) {
+      Navigator.pop(context); // Nothing to save
       return;
     }
 
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) throw Exception("Người dùng chưa đăng nhập.");
+      if (userId == null) throw Exception("User not logged in.");
 
-      // Với nháp, bạn có thể chưa tải file đính kèm lên Storage.
-      // Chỉ lưu đường dẫn file cục bộ. Khi gửi thật từ nháp, lúc đó mới tải lên.
       List<String> attachmentLocalPaths = _attachments.map((f) => f.path).toList();
 
-      final draftData = {
-        'senderId': userId, // Quan trọng để biết nháp này của ai
+      final draftData = { // MODIFIED
         'from': _fromController.text,
-        'to': _toController.text,
-        'cc': _ccController.text,
-        'bcc': _bccController.text,
-        'subject': _subjectController.text,
-        'bodyContent': _bodyController.text, // Đổi tên cho nhất quán
+        'toRecipients': _toController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+        'ccRecipients': _ccController.text.isNotEmpty ? _ccController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() : [],
+        'bccRecipients': _bccController.text.isNotEmpty ? _bccController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() : [],
+        'subject': _subjectController.text.trim(),
+        'body': _bodyController.text.trim(),
+        'attachmentLocalPaths': attachmentLocalPaths,
         'timestamp': FieldValue.serverTimestamp(),
-        'attachments_paths': attachmentLocalPaths,
-        'isDraft': true,
+        'showCcBcc': _showCcBcc,
       };
 
-      // Lưu vào subcollection 'drafts' của người dùng
       await FirebaseFirestore.instance.collection('users').doc(userId).collection('drafts').add(draftData);
 
-      if(mounted) {
+      if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã lưu vào thư nháp')),
+          const SnackBar(content: Text('Draft saved.')),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      if(mounted) {
+      if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi lưu nháp: $e')),
+          SnackBar(content: Text('Failed to save draft: $e')),
         );
-        print('Error saving draft: $e'); // In lỗi
       }
     }
   }
 
   void _discardEmail() {
-     if (_bodyController.text.trim().isNotEmpty || _subjectController.text.trim().isNotEmpty || _toController.text.trim().isNotEmpty || _attachments.isNotEmpty) {
-        showDialog(
+     if (_bodyController.text.trim().isNotEmpty || 
+         _subjectController.text.trim().isNotEmpty || 
+         _toController.text.trim().isNotEmpty || 
+         _attachments.isNotEmpty) {
+        showDialog( // MODIFIED
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Hủy thư này?'),
-            content: const Text('Tất cả thay đổi của bạn sẽ bị mất.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('TIẾP TỤC SOẠN'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.pop(context);
-                },
-                child: const Text('HỦY BỎ', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              title: const Text('Discard email?'),
+              content: const Text('Are you sure you want to discard this email and lose your changes?'),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('CANCEL'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                TextButton(
+                  child: const Text('DISCARD'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); 
+                    Navigator.of(context).pop(); 
+                  },
+                ),
+              ],
+            );
+          },
         );
      } else {
         Navigator.pop(context);

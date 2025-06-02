@@ -41,7 +41,9 @@ class CustomDrawer extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) { // context is defined here
+  Widget build(BuildContext context) {
+    final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Drawer(
       backgroundColor: Colors.white,
       child: ListView(
@@ -59,15 +61,81 @@ class CustomDrawer extends StatelessWidget {
               ],
             ),
           ),
-          // Calls to _buildDrawerItem no longer pass context
-          _buildDrawerItem(Icons.all_inbox, "All inboxes", count: emails.length, isSelected: selectedLabel == "All inboxes"),
-          _buildDrawerItem(Icons.inbox, "Inbox", count: emails.where((e) => e['label'] == 'Inbox').length, isSelected: selectedLabel == "Inbox"),
-          _buildDrawerItem(Icons.star_border, "Starred", count: emails.where((e) => e['starred'] == true).length, isSelected: selectedLabel == "Starred"),
-          _buildDrawerItem(Icons.send, "Sent", count: emails.where((e) => e['label'] == 'Sent').length, isSelected: selectedLabel == "Sent"),
-          _buildDrawerItem(Icons.drafts_outlined, "Drafts", count: emails.where((e) => e['label'] == 'Drafts').length, isSelected: selectedLabel == "Drafts"),
-          _buildDrawerItem(Icons.delete_outline, "Trash", count: emails.where((e) => e['label'] == 'Trash').length, isSelected: selectedLabel == "Trash"),
-          _buildDrawerItem(Icons.local_offer_outlined, "Promotions", count: emails.where((e) => e['label'] == 'Promotions').length, isSelected: selectedLabel == "Promotions"),
-          _buildDrawerItem(Icons.update, "Updates", count: emails.where((e) => e['label'] == 'Forums' || e['label'] == 'Updates').length, isSelected: selectedLabel == "Updates"),
+          // _buildDrawerItem(Icons.all_inbox, "All Inboxes", count: emails.length, isSelected: selectedLabel == "All Inboxes"), // Removed "All Inboxes"
+          _buildDrawerItem(
+            Icons.inbox,
+            "Inbox",
+            count: currentUserId != null ? emails.where((e) {
+              final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+              final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+              return userLabels?.contains('Inbox') ?? false;
+            }).length : 0,
+            isSelected: selectedLabel == "Inbox",
+            onTap: () => onLabelSelected("Inbox")
+          ),
+          _buildDrawerItem(
+            Icons.star_border, 
+            "Starred", 
+            count: currentUserId != null ? emails.where((e) {
+              final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+              final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+              return userLabels?.contains('Starred') ?? false;
+            }).length : 0,
+            isSelected: selectedLabel == "Starred",
+            onTap: () => onLabelSelected("Starred")
+          ),
+          _buildDrawerItem(
+            Icons.send, 
+            "Sent", 
+            count: currentUserId != null ? emails.where((e) {
+              final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+              final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+              return userLabels?.contains('Sent') ?? false;
+            }).length : 0,
+            isSelected: selectedLabel == "Sent",
+            onTap: () => onLabelSelected("Sent")
+          ),
+          _buildDrawerItem(
+            Icons.drafts_outlined, 
+            "Drafts", 
+            count: currentUserId != null ? emails.where((e) {
+              final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+              final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+              return userLabels?.contains('Drafts') ?? false;
+            }).length : 0,
+            isSelected: selectedLabel == "Drafts",
+            onTap: () => onLabelSelected("Drafts")
+          ),
+          _buildDrawerItem(
+            Icons.delete_outline, 
+            "Trash", 
+            count: currentUserId != null ? emails.where((e) => (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId)).length : 0,
+            isSelected: selectedLabel == "Trash",
+            onTap: () => onLabelSelected("Trash")
+          ),
+          // _buildDrawerItem(
+          //   Icons.local_offer_outlined, 
+          //   "Promotions", 
+          //   count: currentUserId != null ? emails.where((e) {
+          //     final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+          //     final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+          //     return userLabels?.contains('Promotions') ?? false;
+          //   }).length : 0,
+          //   isSelected: selectedLabel == "Promotions",
+          //   onTap: () => onLabelSelected("Promotions")
+          // ),
+          // _buildDrawerItem(
+          //   Icons.update, 
+          //   "Updates", 
+          //   count: currentUserId != null ? emails.where((e) {
+          //     final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+          //     final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
+          //     if (userLabels == null) return false; // If no labels for this user, it's not in Updates/Forums for them
+          //     return (userLabels.contains('Updates') || userLabels.contains('Forums'));
+          //   }).length : 0,
+          //   isSelected: selectedLabel == "Updates",
+          //   onTap: () => onLabelSelected("Updates")
+          // ),
           const Divider(),
           ListTile( // Added Display Settings Button
             leading: const Icon(Icons.settings_display, color: Colors.black54),
@@ -115,7 +183,17 @@ class CustomDrawer extends StatelessWidget {
             dense: true, // Makes the ListTile more compact
           ),
           // Calls to _buildDrawerItem for user labels no longer pass context
-          ...userLabels.map((label) => _buildDrawerItem(Icons.label, label, count: emails.where((e) => e['label'] == label).length, isSelected: selectedLabel == label)).toList(),
+          ...userLabels.map((label) => _buildDrawerItem(
+                Icons.label_outline,
+                label,
+                count: currentUserId != null ? emails.where((e) {
+                  final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
+                  final userLabelsForThisEmail = labelsMap?[currentUserId] as List<dynamic>?;
+                  return userLabelsForThisEmail?.contains(label) ?? false;
+                }).length : 0,
+                isSelected: selectedLabel == label,
+                onTap: () => onLabelSelected(label)
+              )).toList(),
           const Divider(),
           ListTile( // Cài đặt
             leading: const Icon(Icons.settings_outlined, color: Colors.black54),
@@ -149,8 +227,7 @@ class CustomDrawer extends StatelessWidget {
     );
   }
 
-  // _buildDrawerItem reverted to its original form (no BuildContext parameter)
-  Widget _buildDrawerItem(IconData icon, String title, {bool isSelected = false, int count = 0}) {
+  Widget _buildDrawerItem(IconData icon, String title, {bool isSelected = false, int count = 0, VoidCallback? onTap}) {
     final itemColor = isSelected ? Colors.redAccent : Colors.black87;
     final iconColor = isSelected ? Colors.redAccent : Colors.black54;
 
@@ -168,8 +245,14 @@ class CustomDrawer extends StatelessWidget {
       shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
       onTap: () {
-        // Navigator.pop(context); // Removed: Drawer will not close automatically on label selection
-        onLabelSelected(title);
+        if (onTap != null) {
+          onTap();
+        } else {
+          // Default behavior if specific onTap is not provided (though it should be for these items)
+          onLabelSelected(title);
+        }
+        // Consider closing the drawer here if that's the desired UX
+        // Navigator.pop(context); 
       },
     );
   }

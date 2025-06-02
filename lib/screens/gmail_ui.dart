@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 import 'search_overlay_screen.dart';
 import '../widgets/custom_drawer.dart';
 import 'email_detail_screen.dart';
 import 'compose_email_screen.dart';
 import '../widgets/email_list_item.dart';
-// Import other screens/widgets used by GmailUI as needed, for example:
-// import './login.dart'; // If needed for navigation from GmailUI
-// import './settings_screen.dart'; // If needed
 
 class GmailUI extends StatefulWidget {
-  GmailUI({super.key});
+  final User? user;
+
+  GmailUI({super.key, this.user});
 
   @override
   State<GmailUI> createState() => _GmailUIState();
@@ -19,63 +20,216 @@ class GmailUI extends StatefulWidget {
 class _GmailUIState extends State<GmailUI> {
   bool showDetail = false;
   String selectedLabel = "Inbox";
-  bool isDetailedView = true; // Added for display mode
+  bool isDetailedView = true;
+  String? _userPhotoURL;
+  String? _currentUserDisplayName;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  List<Map<String, dynamic>> _emails = [];
+  bool _isLoadingEmails = true;
 
   final List<String> userLabels = ["Work", "Family"];
 
-  // Callback for updating labels from LabelManagementScreen
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserAvatar();
+    _fetchEmails();
+  }
+
+  Future<void> _fetchEmails() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingEmails = true;
+    });
+
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      if (mounted) {
+        setState(() {
+          _emails = [];
+          _isLoadingEmails = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      List<Map<String, dynamic>> emailsToDisplay = [];
+
+      if (selectedLabel == "Drafts") {
+        final draftsSnapshot = await _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('drafts')
+            .orderBy('timestamp', descending: true)
+            .get();
+
+        emailsToDisplay = draftsSnapshot.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          data['isUnread'] = true;
+          data['starred'] = false;
+          data['isDraft'] = true;
+          data['subject'] = data['subject'] ?? 'No Subject';
+          data['body'] = data['body'] ?? '';
+          data['emailLabels'] = {currentUser.uid: ['Drafts']};
+          data['emailIsReadBy'] = {currentUser.uid: false};
+          data['from'] = currentUser.email;
+          data['toRecipients'] = data['toRecipients'] ?? [];
+          return data;
+        }).toList();
+      } else {
+        Query query = _firestore.collection('emails');
+        query = query.where('involvedUserIds', arrayContains: currentUser.uid);
+        query = query.orderBy('timestamp', descending: true);
+
+        final snapshot = await query.get();
+
+        final allUserEmails = snapshot.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+
+          final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
+          bool isUnread = true;
+          if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
+            isUnread = false;
+          }
+          data['isUnread'] = isUnread;
+
+          final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
+          bool isStarred = false;
+          if (emailLabelsMap != null &&
+              emailLabelsMap[currentUser.uid] is List &&
+              (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
+            isStarred = true;
+          }
+          data['starred'] = isStarred;
+
+          bool isDraft = false;
+          if (emailLabelsMap != null &&
+              emailLabelsMap[currentUser.uid] is List &&
+              (emailLabelsMap[currentUser.uid] as List).contains('Drafts')) {
+            isDraft = true;
+          }
+          data['isDraft'] = isDraft;
+
+          return data;
+        }).toList();
+
+        if (selectedLabel == "All inboxes") {
+          emailsToDisplay = allUserEmails;
+        } else if (selectedLabel == "Starred") {
+          emailsToDisplay = allUserEmails.where((email) => email['starred'] == true).toList();
+        } else {
+          emailsToDisplay = allUserEmails.where((email) {
+            final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
+            if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
+              final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
+              return userSpecificLabels.contains(selectedLabel);
+            }
+            return false;
+          }).toList();
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _emails = emailsToDisplay;
+          _isLoadingEmails = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching emails: $e");
+      if (mounted) {
+        setState(() {
+          _isLoadingEmails = false;
+          _emails = [];
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error fetching emails: $e')),
+            );
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _loadCurrentUserAvatar({bool forceRefresh = false}) async {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      if (mounted) {
+        setState(() {
+          _userPhotoURL = null;
+          _currentUserDisplayName = null;
+        });
+      }
+      return;
+    }
+
+    if (!forceRefresh && _userPhotoURL != null && _userPhotoURL!.isNotEmpty) {
+      return;
+    }
+
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+
+      if (mounted && userDoc.exists) {
+        Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
+        final String? firestoreAvatarUrl = data['avatarUrl'];
+        final String? displayName = data['displayName'] ?? data['name'];
+
+        if (forceRefresh || _currentUserDisplayName != displayName) {
+          setState(() {
+            _currentUserDisplayName = displayName;
+          });
+        }
+
+        if (firestoreAvatarUrl != null && firestoreAvatarUrl.trim().isNotEmpty) {
+          // ignore: unrelated_type_equality_checks
+          if (forceRefresh || _userPhotoURL != firestoreAvatarUrl) {
+            setState(() {
+              _userPhotoURL = firestoreAvatarUrl;
+            });
+          }
+        } else {
+          if (forceRefresh || _userPhotoURL != null) {
+            setState(() {
+              _userPhotoURL = null;
+            });
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _userPhotoURL = null;
+            _currentUserDisplayName = null;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _userPhotoURL = null;
+          _currentUserDisplayName = null;
+        });
+      }
+    }
+  }
+
   void _updateUserLabels(List<String> updatedLabels) {
     setState(() {
       userLabels.clear();
       userLabels.addAll(updatedLabels);
-      // userLabels.sort(); // Optional: sort labels
     });
   }
 
-  final List<Map<String, dynamic>> emails = [
-    {
-      "sender": "Amazon",
-      "subject": "Your order has been shipped!",
-      "time": "8:30 AM",
-      "avatar": "assets/images/amazon.png", // Corrected path
-      "preview": "Your package is on the way! Track your shipment here...",
-      "hasAttachment": true,
-      "label": "Inbox",
-      "starred": false,
-    },    {
-      "sender": "Steam",
-      "subject": "New game discounts available",
-      "time": "7:45 AM",
-      "avatar": "assets/images/steam.png", // Corrected path
-      "preview": "Check out the latest deals on your wishlist games!",
-      "hasAttachment": false,
-      "label": "Promotions",
-      "starred": false,
-    },
-    {
-      "sender": "Boss",
-      "subject": "Project update",
-      "time": "Yesterday",
-      "avatar": "assets/images/Google.png", // Corrected path
-      "preview": "Please send the latest report by EOD.",
-      "hasAttachment": true,
-      "label": "Work",
-      "starred": false,
-    },
-    // ...other emails... Ensure all "avatar" paths here also start with "assets/images/"
-    // For example, if you have an entry for "mahiru.png", it should be:
-    // {
-    //   ...
-    //   "avatar": "assets/images/mahiru.png",
-    //   ...
-    // },
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final filteredEmails = selectedLabel == "All inboxes"
-        ? emails
-        : emails.where((e) => e["label"] == selectedLabel || (selectedLabel == "Inbox" && (e["label"] == null || e["label"] == "Inbox"))).toList();
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 255, 255, 255),
       appBar: AppBar(
@@ -85,7 +239,7 @@ class _GmailUIState extends State<GmailUI> {
         titleSpacing: 0,
         toolbarHeight: 70,
         title: Container(
-          margin: const EdgeInsets.only(top: 8, bottom: 8, left: 12, right: 12), // Thụt lề trái/phải
+          margin: const EdgeInsets.only(top: 8, bottom: 8, left: 12, right: 12),
           decoration: BoxDecoration(
             color: Colors.grey[200],
             borderRadius: BorderRadius.circular(15),
@@ -126,15 +280,30 @@ class _GmailUIState extends State<GmailUI> {
               Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    final bool? avatarChanged = await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const ProfileScreen()),
                     );
+                    if (avatarChanged == true && mounted) {
+                      _loadCurrentUserAvatar(forceRefresh: true);
+                    }
                   },
                   child: CircleAvatar(
-                    backgroundImage: AssetImage("assets/images/mahiru.png"),
                     radius: 18,
+                    backgroundImage: _userPhotoURL != null && _userPhotoURL!.isNotEmpty
+                        ? NetworkImage(_userPhotoURL!)
+                        : null,
+                    child: (_userPhotoURL == null || _userPhotoURL!.isEmpty) &&
+                            (_currentUserDisplayName != null && _currentUserDisplayName!.isNotEmpty)
+                        ? Text(
+                            _currentUserDisplayName![0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white, fontSize: 18),
+                          )
+                        : null,
+                    backgroundColor: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
+                        ? Colors.blue[700]
+                        : Colors.transparent,
                   ),
                 ),
               ),
@@ -147,12 +316,13 @@ class _GmailUIState extends State<GmailUI> {
         onLabelSelected: (label) {
           setState(() {
             selectedLabel = label;
+            _fetchEmails();
           });
           Navigator.pop(context);
         },
         userLabels: userLabels,
-        emails: emails,
-        onUserLabelsUpdated: _updateUserLabels, // Pass the callback here
+        emails: _emails,
+        onUserLabelsUpdated: _updateUserLabels,
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,7 +340,7 @@ class _GmailUIState extends State<GmailUI> {
                   icon: Icon(
                     isDetailedView ? Icons.view_list_outlined : Icons.view_comfortable_outlined,
                     color: Colors.black54,
-                    size: 22, // Slightly increased size for better visibility
+                    size: 22,
                   ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -185,37 +355,101 @@ class _GmailUIState extends State<GmailUI> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: filteredEmails.length,
-              itemBuilder: (context, index) {
-                final email = filteredEmails[index];
-                // bool isStarred = email['starred'] == true; // Moved into a StatefulWidget for the ListTile
-                bool isUnread = email["read"] == false;
+            child: _isLoadingEmails
+                ? const Center(child: CircularProgressIndicator())
+                : _emails.isEmpty
+                    ? Center(child: Text('No emails in $selectedLabel.'))
+                    : ListView.builder(
+                        itemCount: _emails.length,
+                        itemBuilder: (context, index) {
+                          final email = _emails[index];
+                          return EmailListItem(
+                            email: email,
+                            isDetailedView: isDetailedView,
+                            isUnread: email['isUnread'] ?? true,
+                            isSentView: selectedLabel == "Sent",
+                            onTap: () async {
+                              final currentUser = _auth.currentUser;
+                              if (currentUser != null && (email['isUnread'] ?? true) && selectedLabel != "Drafts") {
+                                try {
+                                  await _firestore.collection('emails').doc(email['id']).update({
+                                    'emailIsReadBy.${currentUser.uid}': true,
+                                  });
+                                  if (mounted) {
+                                    setState(() {
+                                      email['isUnread'] = false;
+                                      final emailIndex = _emails.indexWhere((e) => e['id'] == email['id']);
+                                      if (emailIndex != -1) {
+                                        _emails[emailIndex]['isUnread'] = false;
+                                        _emails[emailIndex]['emailIsReadBy'] =
+                                            Map<String, dynamic>.from(_emails[emailIndex]['emailIsReadBy'] ?? {})
+                                              ..[currentUser.uid] = true;
+                                      }
+                                    });
+                                  }
+                                } catch (e) {
+                                  print("Error marking email as read: $e");
+                                }
+                              }
+                              // Navigate to EmailDetailScreen and wait for result
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => EmailDetailScreen(email: email),
+                                ),
+                              );
+                              // If result indicates the draft was edited, refresh the drafts list
+                              if (result == true && selectedLabel == "Drafts" && mounted) {
+                                _fetchEmails();
+                              }
+                            },
+                            onStarPressed: (bool newStarState) async {
+                              final currentUser = _auth.currentUser;
+                              if (currentUser == null) return;
 
-                return EmailListItem(
-                  email: email,
-                  isDetailedView: isDetailedView,
-                  isUnread: isUnread,
-                  onTap: () {
-                    setState(() {
-                      email["read"] = true; // Mark as read on tap
-                    });
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => EmailDetailScreen(email: email),
+                              final emailId = email['id'] as String?;
+                              if (emailId == null) return;
+
+                              if (selectedLabel == "Drafts") return;
+
+                              try {
+                                List<String> currentLabels = List<String>.from(email['emailLabels']?[currentUser.uid] ?? []);
+                                if (newStarState) {
+                                  if (!currentLabels.contains('Starred')) {
+                                    currentLabels.add('Starred');
+                                  }
+                                } else {
+                                  currentLabels.remove('Starred');
+                                }
+                                await _firestore.collection('emails').doc(emailId).update({
+                                  'emailLabels.${currentUser.uid}': currentLabels,
+                                });
+
+                                if (mounted) {
+                                  setState(() {
+                                    email['starred'] = newStarState;
+                                    final emailIndex = _emails.indexWhere((e) => e['id'] == emailId);
+                                    if (emailIndex != -1) {
+                                      _emails[emailIndex]['starred'] = newStarState;
+                                      _emails[emailIndex]['emailLabels'] =
+                                          Map<String, dynamic>.from(_emails[emailIndex]['emailLabels'] ?? {})
+                                            ..[currentUser.uid] = currentLabels;
+                                    }
+                                    if (selectedLabel == "Starred") {
+                                      _fetchEmails();
+                                    }
+                                  });
+                                }
+                              } catch (e) {
+                                print("Error updating star status: $e");
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error updating star status: $e')),
+                                );
+                              }
+                            },
+                          );
+                        },
                       ),
-                    );
-                  },
-                  onStarPressed: (bool newStarState) {
-                    setState(() {
-                      email['starred'] = newStarState;
-                      // Here you would typically also update your backend or persistent storage
-                    });
-                  },
-                );
-              },
-            ),
           ),
         ],
       ),

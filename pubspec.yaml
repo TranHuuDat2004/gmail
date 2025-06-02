@@ -11,7 +11,8 @@ dependencies:
     sdk: flutter
 
   image_picker: ^1.1.2 
-  file_picker: 
+  file_picker: ^10.1.9 
+  pinput: ^4.0.0 
 
   # Các gói khác
   http: ^1.2.0
