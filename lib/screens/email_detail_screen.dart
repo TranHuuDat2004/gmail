@@ -154,14 +154,22 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           widget.email['emailLabels'] = emailLabelsMap;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newStarStatus ? 'Đã gắn dấu sao' : 'Đã bỏ dấu sao')),
+          SnackBar(
+            content: Text(newStarStatus ? 'Đã gắn dấu sao' : 'Đã bỏ dấu sao'),
+            backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       print("Error updating star status for user $userId on email $emailId: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật dấu sao: $e')),
+          SnackBar(
+            content: Text('Lỗi khi cập nhật dấu sao: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -170,6 +178,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   Future<void> _toggleReadStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newReadStatus = !_isReadLocally;
+    final theme = Theme.of(context); // Get theme for SnackBar
 
     try {
       await FirebaseFirestore.instance
@@ -187,7 +196,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           }
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newReadStatus ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc')),
+          SnackBar(
+            content: Text(newReadStatus ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         if (!newReadStatus) { // If marked as unread
           Navigator.pop(context, {'markedAsUnread': true, 'emailId': widget.email['id']});
@@ -197,7 +210,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       print("Error updating read status: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật trạng thái đọc: $e')),
+          SnackBar(
+            content: Text('Lỗi khi cập nhật trạng thái đọc: $e'),
+            backgroundColor: theme.colorScheme.error, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -207,6 +224,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     if (_currentUser == null || widget.email['id'] == null) return;
     final String userId = _currentUser!.uid;
     final String emailId = widget.email['id'];
+    final theme = Theme.of(context); // Get theme for SnackBar
 
     try {
       await FirebaseFirestore.instance
@@ -224,7 +242,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã chuyển vào Thùng rác')),
+          SnackBar(
+            content: const Text('Đã chuyển vào Thùng rác'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         Navigator.pop(context, {'deleted': true, 'emailId': widget.email['id']});
       }
@@ -232,7 +254,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       print("Error moving email to trash: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi chuyển vào thùng rác: $e')),
+          SnackBar(
+            content: Text('Lỗi khi chuyển vào thùng rác: $e'),
+            backgroundColor: theme.colorScheme.error, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -240,7 +266,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   void _assignLabels() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chức năng gán nhãn (chưa triển khai)')),
+      SnackBar(
+        content: const Text('Chức năng gán nhãn (chưa triển khai)'),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
   
@@ -248,6 +278,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
      if (_currentUser == null || widget.email['id'] == null) return;
     final String userId = _currentUser!.uid;
     final String emailId = widget.email['id'];
+    final theme = Theme.of(context); // Get theme for SnackBar
 
     // Example: Move to an "Archived" label and remove "Inbox"
     // This is a conceptual implementation. Your actual label logic might vary.
@@ -261,18 +292,35 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }, SetOptions(merge: true)) // Use merge to update existing labels without overwriting other users'
     .then((_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu trữ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Đã lưu trữ'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
         Navigator.pop(context, {'archived': true, 'emailId': emailId});
       }
     }).catchError((e) {
        if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi lưu trữ: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi lưu trữ: $e'),
+            backgroundColor: theme.colorScheme.error, // Themed SnackBar
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
        }
     });
   }
 
-  Widget _buildMetaDetailRow(String label, String value) {
+  Widget _buildMetaDetailRow(BuildContext context, String label, String value) { // Added context
     if (value.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final labelColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final valueColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3.0),
       child: Row(
@@ -282,14 +330,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             width: 60,
             child: Text(
               "$label:",
-              style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 14, color: labelColor, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: SelectableText( // Made value selectable
               value,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
+              style: TextStyle(fontSize: 14, color: valueColor),
             ),
           ),
         ],
@@ -299,6 +347,40 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Define colors based on theme
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final popupMenuIconColor = appBarIconColor;
+    final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final subjectColor = isDarkMode ? Colors.grey[100] : const Color(0xFF1f1f1f);
+    final starColor = isDarkMode ? Colors.yellow[600] : Colors.amber[600];
+    final unstarColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+    final avatarBackgroundColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final avatarTextColor = isDarkMode ? Colors.grey[300] : Colors.white70;
+    final senderNameColor = isDarkMode ? Colors.grey[200] : const Color(0xFF3c4043);
+    final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final timeColor = recipientMetaColor;
+    final metaDetailBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    final dividerColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    final bodyTextColor = isDarkMode ? Colors.grey[200] : const Color(0xFF1f1f1f);
+    final attachmentHeaderColor = recipientMetaColor;
+    final attachmentCardBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final attachmentCardBorderColor = metaDetailBorderColor;
+    final attachmentIconColor = isDarkMode ? Colors.blue[300] : Colors.blueAccent;
+    final attachmentTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final attachmentActionIconColor = recipientMetaColor;
+    final bottomNavBarBackgroundColor = appBarBackgroundColor;
+    final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    
+    // Colors for ActionButton based on the screenshot for dark mode
+    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF303134) : Colors.grey[200]; // Dark grey for dark mode button bg (Gmail style)
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFFE8EAED) : Colors.black87; // Light grey for dark mode button text/icon (Gmail style)
+
     final email = widget.email;
     String senderDisplayNameToShow;
     String senderInitialToShow;
@@ -341,48 +423,59 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black54),
+        backgroundColor: appBarBackgroundColor,
+        elevation: isDarkMode ? 0.5 : 1.0,
+        iconTheme: IconThemeData(color: appBarIconColor),
         actions: [
           IconButton(
             icon: const Icon(Icons.archive_outlined),
             tooltip: 'Lưu trữ',
             onPressed: _archiveEmail,
+            color: appBarIconColor, // Explicitly set color
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Chuyển vào Thùng rác',
             onPressed: _deleteEmail,
+            color: appBarIconColor, // Explicitly set color
           ),
           IconButton(
-            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined), // Using drafts_outlined for unread
+            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined),
             tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
             onPressed: _toggleReadStatus,
+            color: appBarIconColor, // Explicitly set color
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
+            icon: Icon(Icons.more_vert, color: popupMenuIconColor),
+            color: popupMenuBackgroundColor,
             onSelected: (value) {
               if (value == 'assign_labels') _assignLabels();
-              else if (value == 'move_to') ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Di chuyển đến... (chưa triển khai)')));
-              // Star toggle is handled by direct icon button, but can be added here too
+              else if (value == 'move_to') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Di chuyển đến... (chưa triển khai)'),
+                    backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến')),
+              PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến', style: TextStyle(color: popupMenuTextColor))),
               const PopupMenuDivider(),
-              PopupMenuItem<String>( // Star/Unstar in menu
-                onTap: _toggleStarStatus, // Call directly
+              PopupMenuItem<String>( 
+                onTap: _toggleStarStatus,
                 child: Row(
                   children: [
-                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? Colors.amber[600] : Colors.grey),
+                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? starColor : unstarColor),
                     const SizedBox(width: 8),
-                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao'),
+                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao', style: TextStyle(color: popupMenuTextColor)),
                   ],
                 ),
               ),
-              const PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn')),
+              PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn', style: TextStyle(color: popupMenuTextColor))),
             ],
           ),
         ],
@@ -397,13 +490,13 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 Expanded(
                   child: Text(
                     email['subject'] ?? '(Không có tiêu đề)',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: Color(0xFF1f1f1f)),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: subjectColor),
                   ),
                 ),
                 IconButton(
                   icon: Icon(
                     _isStarredLocally ? Icons.star : Icons.star_border,
-                    color: _isStarredLocally ? Colors.amber[600] : Colors.grey[600],
+                    color: _isStarredLocally ? starColor : unstarColor,
                     size: 24,
                   ),
                   onPressed: _toggleStarStatus,
@@ -416,12 +509,12 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.grey[300],
+                  backgroundColor: avatarBackgroundColor,
                   backgroundImage: senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty
                       ? NetworkImage(senderAvatarUrlToShow)
                       : null,
                   child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
-                      ? Text(senderInitialToShow, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white70))
+                      ? Text(senderInitialToShow, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor))
                       : null,
                   radius: 22,
                 ),
@@ -432,9 +525,9 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     children: [
                       Text(
                         senderDisplayNameToShow,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3c4043)),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: senderNameColor),
                       ),
-                      GestureDetector( // Make "tới tôi" tappable to show details
+                      GestureDetector( 
                         onTap: () {
                            if (mounted) setState(() => _showMetaDetails = !_showMetaDetails);
                         },
@@ -442,12 +535,12 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              "tới tôi", // This can be dynamic based on recipients
-                              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                              "tới tôi", 
+                              style: TextStyle(fontSize: 13, color: recipientMetaColor),
                             ),
                              Icon(
                               _showMetaDetails ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                              color: Colors.grey[700], size: 20
+                              color: recipientMetaColor, size: 20
                             ),
                           ],
                         ),
@@ -457,7 +550,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 ),
                 Text(
                   displayTime,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  style: TextStyle(fontSize: 13, color: timeColor),
                 ),
               ],
             ),
@@ -465,28 +558,28 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             if (_showMetaDetails)
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
-                child: Container( // Added a container for better visual grouping
+                child: Container( 
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300, width: 0.8),
+                    border: Border.all(color: metaDetailBorderColor, width: 0.8),
+                    color: isDarkMode ? Colors.grey[850] : Colors.white, // Background for meta details box
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildMetaDetailRow("From", _fetchedSenderDisplayNameForDetail ?? email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
-                      _buildMetaDetailRow("To", toRecipients.join(', ')),
-                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow("Cc", ccRecipients.join(', ')),
-                      // if (bccRecipients.isNotEmpty) _buildMetaDetailRow("Bcc", bccRecipients.join(', ')), // Not shown to recipients
-                      _buildMetaDetailRow("Date", formattedDate),
+                      _buildMetaDetailRow(context, "From", _fetchedSenderDisplayNameForDetail ?? email['senderEmail'] ?? email['from'] ?? 'Không rõ'), // Pass context
+                      _buildMetaDetailRow(context, "To", toRecipients.join(', ')), // Pass context
+                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipients.join(', ')), // Pass context
+                      _buildMetaDetailRow(context, "Date", formattedDate), // Pass context
                     ],
                   ),
                 ),
               ),
-            const Divider(height: 32),
-            SelectableText( // Made body selectable
+            Divider(height: 32, color: dividerColor),
+            SelectableText( 
               email['body'] ?? email['bodyContent'] ?? '(Không có nội dung)',
-              style: const TextStyle(fontSize: 15, color: Color(0xFF1f1f1f), height: 1.5),
+              style: TextStyle(fontSize: 15, color: bodyTextColor, height: 1.5),
             ),
             if (attachments.isNotEmpty)
               Padding(
@@ -494,7 +587,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Tệp đính kèm (${attachments.length})", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[700])),
+                    Text("Tệp đính kèm (${attachments.length})", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: attachmentHeaderColor)),
                     const SizedBox(height: 8),
                     ListView.builder(
                       shrinkWrap: true,
@@ -508,21 +601,32 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                         } catch (_) {}
 
                         return Card(
-                          elevation: 0.5,
+                          elevation: isDarkMode ? 0.2 : 0.5,
+                          color: attachmentCardBackgroundColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: Colors.grey.shade300)
+                            side: BorderSide(color: attachmentCardBorderColor)
                           ),
                           child: ListTile(
-                            leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.blueAccent),
-                            title: Text(fileName, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                            trailing: IconButton(icon: Icon(Icons.download_outlined, color: Colors.grey[700]), onPressed: (){
-                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Tải $fileName... (chưa triển khai)")));
-                               // TODO: Implement download using url_launcher or similar
+                            leading: Icon(Icons.insert_drive_file_outlined, color: attachmentIconColor),
+                            title: Text(fileName, style: TextStyle(color: attachmentTextColor, fontSize: 14)),
+                            trailing: IconButton(icon: Icon(Icons.download_outlined, color: attachmentActionIconColor), onPressed: (){
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 SnackBar(
+                                   content: Text("Tải $fileName... (chưa triển khai)"),
+                                   backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+                                   behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                             }),
                             onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Mở $fileName... (chưa triển khai)")));
-                              // TODO: Implement open/preview attachment
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Mở $fileName... (chưa triển khai)"),
+                                  backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
                             },
                           ),
                         );
@@ -537,8 +641,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade300, width: 0.5))),
+            color: bottomNavBarBackgroundColor,
+            border: Border(top: BorderSide(color: bottomNavBarBorderColor, width: 0.5))),
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -552,12 +656,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => ComposeEmailScreen(
-                        replyOrForwardEmail: widget.email, // Pass the full email map
+                        replyOrForwardEmail: widget.email, 
                         composeMode: 'reply',
                       ),
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
             const SizedBox(width: 10),
@@ -576,6 +682,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
             const SizedBox(width: 10),
@@ -594,6 +702,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
           ],

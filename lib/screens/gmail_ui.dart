@@ -300,26 +300,42 @@ class _GmailUIState extends State<GmailUI> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context); // Get the current theme
+    final bool isDarkMode = theme.brightness == Brightness.dark; // Check for dark mode
+
+    // Define FAB colors based on theme
+    final Color fabBackgroundColor = isDarkMode 
+        ? const Color(0xFFC62828) // Dark red for dark mode
+        : Colors.blue; // Blue for light mode
+    final Color fabForegroundColor = isDarkMode 
+        ? Colors.white.withOpacity(0.95) // Light white for dark mode
+        : Colors.white; // White for light mode text/icon
+
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+      backgroundColor: theme.colorScheme.background, // Use theme color
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.0,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface, // Use theme color
+        elevation: 0.0, // Keep elevation 0 as per previous settings
         automaticallyImplyLeading: false,
         titleSpacing: 0,
         toolbarHeight: 70,
         title: Container(
           margin: const EdgeInsets.only(top: 8, bottom: 8, left: 12, right: 12),
           decoration: BoxDecoration(
-            color: Colors.grey[200],
-            borderRadius: BorderRadius.circular(15),
+            color: theme.brightness == Brightness.dark ? theme.colorScheme.surface : Colors.grey[200], // Updated dark mode color
+            borderRadius: BorderRadius.circular(30.0), // Increased border radius
+            // border: Border.all( // Border remains removed as per previous request
+            //   color: theme.brightness == Brightness.light ? Colors.grey.shade400 : Colors.grey.shade700,
+            //   width: 1.0,
+            // ),
+            boxShadow: const [], // Keep shadow explicitly empty
           ),
           padding: const EdgeInsets.symmetric(horizontal: 0),
           child: Row(
             children: [
               Builder(
                 builder: (context) => IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.black54),
+                  icon: Icon(Icons.menu, color: theme.iconTheme.color), // Use theme icon color
                   splashColor: Colors.transparent,
                   highlightColor: Colors.transparent,
                   hoverColor: Colors.transparent,
@@ -330,15 +346,17 @@ class _GmailUIState extends State<GmailUI> {
               Expanded(
                 child: TextField(
                   controller: _searchController,
-                  cursorColor: Colors.black,
-                  decoration: const InputDecoration(
+                  cursorColor: theme.colorScheme.onSurfaceVariant, // Use theme color
+                  decoration: InputDecoration(
                     hintText: "Search in mail",
-                    hintStyle: TextStyle(color: Colors.black38),
+                    hintStyle: TextStyle(color: theme.hintColor), // Use theme hint color
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none, // Explicitly remove enabled border
+                    focusedBorder: InputBorder.none,
                     isCollapsed: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  style: const TextStyle(color: Colors.black87),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant), // Use theme text color
                   onSubmitted: (value) {
                     if (value.trim().isNotEmpty) {
                       _searchEmails(value.trim());
@@ -369,11 +387,11 @@ class _GmailUIState extends State<GmailUI> {
                             (_currentUserDisplayName != null && _currentUserDisplayName!.isNotEmpty)
                         ? Text(
                             _currentUserDisplayName![0].toUpperCase(),
-                            style: const TextStyle(color: Colors.white, fontSize: 18),
+                            style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18), // Use theme color
                           )
                         : null,
                     backgroundColor: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
-                        ? Colors.blue[700]
+                        ? theme.colorScheme.primary // Use theme color
                         : Colors.transparent,
                   ),
                 ),
@@ -405,12 +423,16 @@ class _GmailUIState extends State<GmailUI> {
               children: [
                 Text(
                   selectedLabel.toUpperCase(),
-                  style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    fontSize: 12, 
+                    color: theme.brightness == Brightness.dark ? Colors.grey[400] : theme.colorScheme.onSurface.withOpacity(0.7), // Adjusted for dark mode
+                    fontWeight: FontWeight.w500
+                  ), 
                 ),
                 IconButton(
                   icon: Icon(
                     isDetailedView ? Icons.view_list_outlined : Icons.view_comfortable_outlined,
-                    color: Colors.black54,
+                    color: theme.iconTheme.color, // Use theme icon color
                     size: 22,
                   ),
                   padding: EdgeInsets.zero,
@@ -526,7 +548,7 @@ class _GmailUIState extends State<GmailUI> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.white,
+        backgroundColor: fabBackgroundColor, // Use conditional background color
         elevation: 2.0,
         onPressed: () {
           Navigator.push(
@@ -534,8 +556,8 @@ class _GmailUIState extends State<GmailUI> {
             MaterialPageRoute(builder: (context) => const ComposeEmailScreen()),
           );
         },
-        icon: const Icon(Icons.edit, color: Colors.redAccent),
-        label: const Text("Compose", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500)),
+        icon: Icon(Icons.edit, color: fabForegroundColor), // Use conditional foreground color
+        label: Text("Compose", style: TextStyle(color: fabForegroundColor, fontWeight: FontWeight.w500)), // Use conditional foreground color
       ),
     );
   }

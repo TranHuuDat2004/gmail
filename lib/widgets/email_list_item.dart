@@ -262,6 +262,7 @@ class _EmailListItemState extends State<EmailListItem> {
   @override
   Widget build(BuildContext context) {
     final email = widget.email;
+    final theme = Theme.of(context); // Get the current theme
 
     String preliminaryDisplayName;
     if (widget.isSentView) {
@@ -286,7 +287,9 @@ class _EmailListItemState extends State<EmailListItem> {
     
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: widget.isUnread ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.grey[200],
+        backgroundColor: avatarUrl != null && avatarUrl.isNotEmpty 
+            ? Colors.transparent // Transparent if image is present
+            : theme.colorScheme.secondaryContainer, // Theme color for avatar background
         backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty 
             ? NetworkImage(avatarUrl)
             : null,
@@ -295,7 +298,7 @@ class _EmailListItemState extends State<EmailListItem> {
                 initialForAvatar,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: widget.isUnread ? Theme.of(context).primaryColorDark : Colors.grey[700],
+                  color: theme.colorScheme.onSecondaryContainer, // Theme color for avatar text
                 ),
               )
             : null,
@@ -304,7 +307,9 @@ class _EmailListItemState extends State<EmailListItem> {
         displayName, // Use the fetched or fallback display name
         style: TextStyle(
           fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
-          color: Colors.black87,
+          color: theme.brightness == Brightness.dark
+              ? (widget.isUnread ? Colors.grey[200] : Colors.grey[400]) // Lighter grays for dark mode title
+              : (widget.isUnread ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant),
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -319,7 +324,9 @@ class _EmailListItemState extends State<EmailListItem> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
-              color: widget.isUnread ? Colors.black.withOpacity(0.85) : Colors.black54,
+              color: theme.brightness == Brightness.dark
+                  ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500]) // Lighter grays for dark mode subject
+                  : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
             ),
           ),
           if (widget.isDetailedView && email["preview"] != null && (email["preview"] as String).isNotEmpty)
@@ -329,7 +336,12 @@ class _EmailListItemState extends State<EmailListItem> {
                 email["preview"],
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 13, 
+                  color: theme.brightness == Brightness.dark 
+                      ? Colors.grey[600] // Lighter gray for dark mode preview
+                      : theme.colorScheme.onSurfaceVariant.withOpacity(0.6)
+                ), 
               ),
             ),
         ],
@@ -343,7 +355,9 @@ class _EmailListItemState extends State<EmailListItem> {
             email["time"] ?? "",
             style: TextStyle(
               fontSize: 12,
-              color: widget.isUnread ? Theme.of(context).primaryColor : Colors.grey[600],
+              color: theme.brightness == Brightness.dark
+                  ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500]) // Lighter grays for dark mode time
+                  : (widget.isUnread ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
               fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
             ),
           ),
@@ -354,7 +368,9 @@ class _EmailListItemState extends State<EmailListItem> {
             child: IconButton(
               icon: Icon(
                 _isStarred ? Icons.star : Icons.star_border,
-                color: _isStarred ? Colors.amber[600] : Colors.grey,
+                color: _isStarred 
+                    ? Colors.amber[600] 
+                    : (theme.brightness == Brightness.dark ? Colors.grey[600] : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)), // Adjusted star for dark mode
                 size: 20,
               ),
               padding: EdgeInsets.zero,
@@ -369,8 +385,11 @@ class _EmailListItemState extends State<EmailListItem> {
         ],
       ),
       onTap: widget.onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), 
-      tileColor: widget.isUnread ? Theme.of(context).primaryColor.withOpacity(0.03) : null, 
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      // Reverted tileColor to default behavior, text color changes will handle visibility
+      tileColor: widget.isUnread && theme.brightness == Brightness.light 
+          ? theme.colorScheme.primaryContainer.withOpacity(0.1) 
+          : null,
     );
   }
 }

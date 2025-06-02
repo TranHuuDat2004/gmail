@@ -43,26 +43,38 @@ class CustomDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final theme = Theme.of(context); // Get the current theme
+    final bool isDarkMode = theme.brightness == Brightness.dark;
+
+    // Define colors based on theme
+    final drawerBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final headerBackgroundColor = isDarkMode ? const Color(0xFF202124) : const Color(0xFFF6F8FC);
+    final headerIconColor = isDarkMode ? Colors.grey[400] : Colors.redAccent;
+    final headerTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final defaultIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final defaultTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final labelsHeaderColor = isDarkMode ? Colors.grey[500] : Colors.black54;
 
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: drawerBackgroundColor,
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
             decoration: BoxDecoration(
-              color: const Color(0xFFF6F8FC),
+              color: headerBackgroundColor,
             ),
             child: Row(
-              children: const [
-                Icon(Icons.mail, color: Colors.redAccent, size: 32),
-                SizedBox(width: 10),
-                Text("Gmail", style: TextStyle(color: Colors.black87, fontSize: 22)),
+              children: [
+                Icon(Icons.mail, color: headerIconColor, size: 32),
+                const SizedBox(width: 10),
+                Text("Gmail", style: TextStyle(color: headerTextColor, fontSize: 22)),
               ],
             ),
           ),
-          // _buildDrawerItem(Icons.all_inbox, "All Inboxes", count: emails.length, isSelected: selectedLabel == "All Inboxes"), // Removed "All Inboxes"
           _buildDrawerItem(
+            context, // Pass context
             Icons.inbox,
             "Inbox",
             count: currentUserId != null ? emails.where((e) {
@@ -74,6 +86,7 @@ class CustomDrawer extends StatelessWidget {
             onTap: () => onLabelSelected("Inbox")
           ),
           _buildDrawerItem(
+            context, // Pass context
             Icons.star_border, 
             "Starred", 
             count: currentUserId != null ? emails.where((e) {
@@ -85,6 +98,7 @@ class CustomDrawer extends StatelessWidget {
             onTap: () => onLabelSelected("Starred")
           ),
           _buildDrawerItem(
+            context, // Pass context
             Icons.send, 
             "Sent", 
             count: currentUserId != null ? emails.where((e) {
@@ -96,6 +110,7 @@ class CustomDrawer extends StatelessWidget {
             onTap: () => onLabelSelected("Sent")
           ),
           _buildDrawerItem(
+            context, // Pass context
             Icons.drafts_outlined, 
             "Drafts", 
             count: currentUserId != null ? emails.where((e) {
@@ -107,64 +122,41 @@ class CustomDrawer extends StatelessWidget {
             onTap: () => onLabelSelected("Drafts")
           ),
           _buildDrawerItem(
+            context, // Pass context
             Icons.delete_outline, 
             "Trash", 
             count: currentUserId != null ? emails.where((e) => (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId)).length : 0,
             isSelected: selectedLabel == "Trash",
             onTap: () => onLabelSelected("Trash")
           ),
-          // _buildDrawerItem(
-          //   Icons.local_offer_outlined, 
-          //   "Promotions", 
-          //   count: currentUserId != null ? emails.where((e) {
-          //     final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
-          //     final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
-          //     return userLabels?.contains('Promotions') ?? false;
-          //   }).length : 0,
-          //   isSelected: selectedLabel == "Promotions",
-          //   onTap: () => onLabelSelected("Promotions")
-          // ),
-          // _buildDrawerItem(
-          //   Icons.update, 
-          //   "Updates", 
-          //   count: currentUserId != null ? emails.where((e) {
-          //     final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
-          //     final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
-          //     if (userLabels == null) return false; // If no labels for this user, it's not in Updates/Forums for them
-          //     return (userLabels.contains('Updates') || userLabels.contains('Forums'));
-          //   }).length : 0,
-          //   isSelected: selectedLabel == "Updates",
-          //   onTap: () => onLabelSelected("Updates")
-          // ),
-          const Divider(),
-          ListTile( // Added Display Settings Button
-            leading: const Icon(Icons.settings_display, color: Colors.black54),
-            title: const Text('Display Settings', style: TextStyle(color: Colors.black87)),
+          Divider(color: dividerColor),
+          ListTile(
+            leading: Icon(Icons.settings_display, color: defaultIconColor),
+            title: Text('Display Settings', style: TextStyle(color: defaultTextColor)),
             onTap: () {
-              Navigator.pop(context); // Close the drawer
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()),
               );
             },
           ),
-          ListTile( // Added Auto Answer Mode Button
-            leading: const Icon(Icons.reply_all_outlined, color: Colors.black54),
-            title: const Text('Chế độ tự động trả lời', style: TextStyle(color: Colors.black87)),
+          ListTile(
+            leading: Icon(Icons.reply_all_outlined, color: defaultIconColor),
+            title: Text('Chế độ tự động trả lời', style: TextStyle(color: defaultTextColor)),
             onTap: () {
-              Navigator.pop(context); // Close drawer
+              Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (context) => const AutoAnswerModeScreen()));
             },
           ),
-          const Divider(),
-          // Replace Padding with ListTile for "Labels" header and add button
+          Divider(color: dividerColor),
           ListTile(
             title: Text(
               "Labels",
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.black54, fontWeight: FontWeight.w500),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(color: labelsHeaderColor, fontWeight: FontWeight.w500),
             ),
             trailing: IconButton(
-              icon: const Icon(Icons.add, color: Colors.black54),
+              icon: Icon(Icons.add, color: defaultIconColor),
               tooltip: 'Tạo nhãn mới',
               onPressed: () {
                 Navigator.pop(context); // Close the drawer first
@@ -184,6 +176,7 @@ class CustomDrawer extends StatelessWidget {
           ),
           // Calls to _buildDrawerItem for user labels no longer pass context
           ...userLabels.map((label) => _buildDrawerItem(
+                context, // Pass context
                 Icons.label_outline,
                 label,
                 count: currentUserId != null ? emails.where((e) {
@@ -194,10 +187,10 @@ class CustomDrawer extends StatelessWidget {
                 isSelected: selectedLabel == label,
                 onTap: () => onLabelSelected(label)
               )).toList(),
-          const Divider(),
-          ListTile( // Cài đặt
-            leading: const Icon(Icons.settings_outlined, color: Colors.black54),
-            title: const Text('Cài đặt', style: TextStyle(color: Colors.black87)),
+          Divider(color: dividerColor),
+          ListTile( 
+            leading: Icon(Icons.settings_outlined, color: defaultIconColor),
+            title: Text('Cài đặt', style: TextStyle(color: defaultTextColor)),
             onTap: () {
               Navigator.pop(context); // Đóng drawer trước
               Navigator.push(
@@ -206,18 +199,18 @@ class CustomDrawer extends StatelessWidget {
               );
             },
           ),
-           ListTile( // Ví dụ thêm mục Trợ giúp & Phản hồi
-            leading: const Icon(Icons.help_outline, color: Colors.black54),
-            title: const Text('Trợ giúp & phản hồi', style: TextStyle(color: Colors.black87)),
+           ListTile( 
+            leading: Icon(Icons.help_outline, color: defaultIconColor),
+            title: Text('Trợ giúp & phản hồi', style: TextStyle(color: defaultTextColor)),
             onTap: () {
               Navigator.pop(context); // Đóng drawer
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Trợ giúp & Phản hồi")));
             },
           ),
-          const Divider(), // Thêm Divider trước nút Đăng xuất nếu muốn tách biệt rõ hơn
-          ListTile( // LOGOUT BUTTON - Đặt ở dưới cùng
-            leading: const Icon(Icons.logout, color: Colors.black54),
-            title: const Text('Đăng xuất', style: TextStyle(color: Colors.black87)),
+          Divider(color: dividerColor), // Thêm Divider trước nút Đăng xuất nếu muốn tách biệt rõ hơn
+          ListTile( 
+            leading: Icon(Icons.logout, color: defaultIconColor),
+            title: Text('Đăng xuất', style: TextStyle(color: defaultTextColor)),
             onTap: () {
               _handleLogout(context); // Gọi hàm xử lý đăng xuất
             },
@@ -227,9 +220,19 @@ class CustomDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, {bool isSelected = false, int count = 0, VoidCallback? onTap}) {
-    final itemColor = isSelected ? Colors.redAccent : Colors.black87;
-    final iconColor = isSelected ? Colors.redAccent : Colors.black54;
+  Widget _buildDrawerItem(BuildContext context, IconData icon, String title, {bool isSelected = false, int count = 0, VoidCallback? onTap}) {
+    final theme = Theme.of(context);
+    final bool isDarkMode = theme.brightness == Brightness.dark;
+
+    final Color selectedColor = isDarkMode ? const Color(0xFFE8EAED) : Colors.redAccent; // Light text/icon for selected in dark
+    final Color unselectedIconColor = isDarkMode ? Colors.grey[400]! : Colors.black54;
+    final Color unselectedTextColor = isDarkMode ? Colors.grey[300]! : Colors.black87;
+    final Color selectedTileColor = isDarkMode ? const Color(0xFF4A4A4F) : Colors.red.withOpacity(0.08); // Darker selection for dark mode
+    final Color countColor = isDarkMode ? Colors.grey[500]! : (isSelected ? Colors.redAccent.withOpacity(0.7) : Colors.black87.withOpacity(0.7));
+
+
+    final itemColor = isSelected ? selectedColor : unselectedTextColor;
+    final iconColor = isSelected ? selectedColor : unselectedIconColor;
 
     return ListTile(
       leading: Icon(icon, color: iconColor),
@@ -240,10 +243,10 @@ class CustomDrawer extends StatelessWidget {
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
       ),
-      trailing: count > 0 ? Text(count.toString(), style: TextStyle(color: itemColor.withOpacity(0.7))) : null,
-      tileColor: isSelected ? Colors.red.withOpacity(0.08) : Colors.transparent,
-      shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)) : null,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+      trailing: count > 0 ? Text(count.toString(), style: TextStyle(color: countColor)) : null,
+      tileColor: isSelected ? selectedTileColor : Colors.transparent,
+      shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSelected ? 25 : 8)) : null, // More rounded for selected
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: isSelected ? 2.0 : 0.0), // Slightly more vertical padding for selected
       onTap: () {
         if (onTap != null) {
           onTap();

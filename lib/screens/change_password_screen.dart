@@ -122,26 +122,36 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             context: context,
             barrierDismissible: false, // Người dùng không thể tắt bằng cách chạm bên ngoài
             builder: (BuildContext dialogContext) {
+              // Determine dialog colors based on the dialogContext's theme
+              final bool isDialogDarkMode = Theme.of(dialogContext).brightness == Brightness.dark;
+              final effectiveDialogBackgroundColor = isDialogDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+              final effectiveDialogSuccessIconColor = isDialogDarkMode ? Colors.green[300]! : Colors.green;
+              final effectiveDialogSuccessTitleColor = isDialogDarkMode ? Colors.green[300]! : Colors.green;
+              final effectiveDialogContentColor = isDialogDarkMode ? Colors.grey[300]! : Colors.black54;
+              final effectiveDialogButtonBackgroundColor = isDialogDarkMode ? Colors.blue[600]! : Colors.blue[700]!
+;
+              final effectiveDialogButtonForegroundColor = Colors.white;
+
               return AlertDialog(
-                backgroundColor: Colors.white,
+                backgroundColor: effectiveDialogBackgroundColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
-                icon: const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
-                title: const Text(
+                icon: Icon(Icons.check_circle_outline, color: effectiveDialogSuccessIconColor, size: 50),
+                title: Text(
                   'Thành công',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 22),
+                  style: TextStyle(color: effectiveDialogSuccessTitleColor, fontWeight: FontWeight.bold, fontSize: 22),
                 ),
-                content: const Text(
+                content: Text(
                   'Mật khẩu của bạn đã được thay đổi thành công. Vui lòng đăng nhập lại.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.black54), // MODIFIED: Changed color to dark gray
+                  style: TextStyle(fontSize: 16, color: effectiveDialogContentColor),
                 ),
                 actionsAlignment: MainAxisAlignment.center, // Căn giữa nút OK
                 actions: <Widget>[
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[700], // Nền xanh như login
-                      foregroundColor: Colors.white, // Chữ trắng
+                      backgroundColor: effectiveDialogButtonBackgroundColor,
+                      foregroundColor: effectiveDialogButtonForegroundColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8.0),
                       ),
@@ -202,14 +212,33 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Define colors based on theme
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final textFieldLabelColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final textFieldInputColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final textFieldBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey[400]!;
+    final textFieldFocusedBorderColor = isDarkMode ? theme.colorScheme.primary : Colors.blue[700]!;
+    final textFieldFloatingLabelColor = isDarkMode ? theme.colorScheme.primary : Colors.blue[700];
+    final textFieldIconColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+    final errorMessageColor = isDarkMode ? Colors.red[300]! : Colors.red[700]!;
+    final buttonBackgroundColor = isDarkMode ? Colors.blue[600] : Colors.blue[700];
+    final buttonForegroundColor = Colors.white;
+    final loadingIndicatorColor = Colors.white;
+
     return Scaffold(
-      backgroundColor: Colors.white, // THAY ĐỔI: Nền trắng cho Scaffold
+      backgroundColor: scaffoldBackgroundColor, 
       appBar: AppBar(
-        title: const Text('Đổi mật khẩu'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.black54), // THAY ĐỔI: Màu icon back
+        title: Text('Đổi mật khẩu', style: TextStyle(color: appBarTextColor)),
+        backgroundColor: appBarBackgroundColor,
+        foregroundColor: appBarTextColor, 
+        elevation: isDarkMode ? 0 : 1,
+        iconTheme: IconThemeData(color: appBarIconColor), 
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
@@ -221,18 +250,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               TextFormField(
                 controller: _currentPasswordController,
                 obscureText: !_isCurrentPasswordVisible,
+                style: TextStyle(color: textFieldInputColor), 
                 decoration: InputDecoration(
                   labelText: 'Mật khẩu hiện tại',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                  focusedBorder: OutlineInputBorder(// THÊM: Màu viền khi focus
+                  labelStyle: TextStyle(color: textFieldLabelColor), 
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)), // Explicitly set for enabled state
+                  focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.blue[700]!, width: 2.0),
+                    borderSide: BorderSide(color: textFieldFocusedBorderColor, width: 2.0),
                   ),
-                  floatingLabelStyle: TextStyle(color: Colors.blue[700]), // THÊM: Màu label khi focus
+                  floatingLabelStyle: TextStyle(color: textFieldFloatingLabelColor), 
                   suffixIcon: IconButton(
-                    icon: Icon(_isCurrentPasswordVisible
-                        ? Icons.visibility_off
-                        : Icons.visibility),
+                    icon: Icon(
+                      _isCurrentPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                      color: textFieldIconColor, 
+                    ),
                     onPressed: () {
                       setState(() {
                         _isCurrentPasswordVisible = !_isCurrentPasswordVisible;
@@ -252,18 +285,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               TextFormField(
                 controller: _newPasswordController,
                 obscureText: !_isNewPasswordVisible,
+                style: TextStyle(color: textFieldInputColor), 
                 decoration: InputDecoration(
                   labelText: 'Mật khẩu mới',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                  focusedBorder: OutlineInputBorder(// THÊM: Màu viền khi focus
+                  labelStyle: TextStyle(color: textFieldLabelColor), 
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)), // Explicitly set for enabled state
+                  focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.blue[700]!, width: 2.0),
+                    borderSide: BorderSide(color: textFieldFocusedBorderColor, width: 2.0),
                   ),
-                  floatingLabelStyle: TextStyle(color: Colors.blue[700]), // THÊM: Màu label khi focus
+                  floatingLabelStyle: TextStyle(color: textFieldFloatingLabelColor), 
                   suffixIcon: IconButton(
-                    icon: Icon(_isNewPasswordVisible
-                        ? Icons.visibility_off
-                        : Icons.visibility),
+                    icon: Icon(
+                      _isNewPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                      color: textFieldIconColor, 
+                    ),
                     onPressed: () {
                       setState(() {
                         _isNewPasswordVisible = !_isNewPasswordVisible;
@@ -286,18 +323,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               TextFormField(
                 controller: _confirmPasswordController,
                 obscureText: !_isConfirmPasswordVisible,
+                style: TextStyle(color: textFieldInputColor), 
                 decoration: InputDecoration(
                   labelText: 'Xác nhận mật khẩu mới',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                  focusedBorder: OutlineInputBorder(// THÊM: Màu viền khi focus
+                  labelStyle: TextStyle(color: textFieldLabelColor), 
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide(color: textFieldBorderColor)), // Explicitly set for enabled state
+                  focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.blue[700]!, width: 2.0),
+                    borderSide: BorderSide(color: textFieldFocusedBorderColor, width: 2.0),
                   ),
-                  floatingLabelStyle: TextStyle(color: Colors.blue[700]), // THÊM: Màu label khi focus
+                  floatingLabelStyle: TextStyle(color: textFieldFloatingLabelColor), 
                   suffixIcon: IconButton(
-                    icon: Icon(_isConfirmPasswordVisible
-                        ? Icons.visibility_off
-                        : Icons.visibility),
+                    icon: Icon(
+                      _isConfirmPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                      color: textFieldIconColor, 
+                    ),
                     onPressed: () {
                       setState(() {
                         _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
@@ -321,26 +362,26 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   padding: const EdgeInsets.only(top: 15.0, bottom: 10.0),
                   child: Text(
                     _onScreenErrorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 14),
+                    style: TextStyle(color: errorMessageColor, fontSize: 14), 
                     textAlign: TextAlign.center,
                   ),
                 ),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: _isLoading ? null : _submitChangePassword, // THAY ĐỔI: Vô hiệu hóa nút khi đang loading
+                onPressed: _isLoading ? null : _submitChangePassword, 
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[700],
-                  foregroundColor: Colors.white,
+                  backgroundColor: buttonBackgroundColor, 
+                  foregroundColor: buttonForegroundColor, 
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.0),
                   ),
                 ),
                 child: _isLoading
-                    ? const SizedBox(// THAY ĐỔI: Hiển thị CircularProgressIndicator khi loading
+                    ? SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+                        child: CircularProgressIndicator(strokeWidth: 2, color: loadingIndicatorColor) 
                       )
                     : const Text('ĐỔI MẬT KHẨU', style: TextStyle(fontSize: 16)),
               ),

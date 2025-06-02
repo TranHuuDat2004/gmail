@@ -66,8 +66,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final theme = Theme.of(context); // Get theme for SnackBar
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không thể chọn ảnh: $e')),
+          SnackBar(
+            content: Text('Không thể chọn ảnh: $e'),
+            backgroundColor: theme.colorScheme.error, // Use theme error color
+          ),
         );
       }
     }
@@ -112,30 +116,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Define colors based on theme
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final saveButtonBackgroundColor = isDarkMode ? Colors.blue[600] : Colors.blue[700];
+    final saveButtonForegroundColor = isDarkMode ? Colors.white : Colors.white;
+    final avatarInitialBackgroundColor = isDarkMode ? Colors.blue[700] : Colors.blue[700];
+    final avatarInitialTextColor = Colors.white;
+    final avatarDefaultBackgroundColor = isDarkMode ? Colors.grey[700] : Colors.grey[200];
+    final avatarDefaultIconColor = isDarkMode ? Colors.grey[400] : Colors.grey[400];
+    final cameraIconBackgroundColor = isDarkMode ? Colors.blue[600] : Colors.blue[700];
+    final cameraIconColor = Colors.white;
+    final changePhotoButtonColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
+    final textFieldLabelColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final textFieldBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey[400]!;
+    final textFieldIconColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+
     return Scaffold(
-      backgroundColor: Colors.white, // THAY ĐỔI: Nền trắng
+      backgroundColor: scaffoldBackgroundColor, 
       appBar: AppBar(
-        title: const Text('Chỉnh sửa Hồ sơ', style: TextStyle(color: Colors.black87)),
-        backgroundColor: Colors.white, // THAY ĐỔI: Nền AppBar trắng
-        foregroundColor: Colors.black87, // Màu chữ và icon trên AppBar
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.black54), // Màu icon back
+        title: Text('Chỉnh sửa Hồ sơ', style: TextStyle(color: appBarTextColor)),
+        backgroundColor: appBarBackgroundColor, 
+        foregroundColor: appBarTextColor, // For title and potentially other elements if not overridden
+        elevation: isDarkMode ? 0 : 1,
+        iconTheme: IconThemeData(color: appBarIconColor), 
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0), // Thêm padding để nút không quá sát cạnh
+            padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0),
             child: ElevatedButton(
               onPressed: () {
                 String newName = _nameController.text;
                 Navigator.pop(context, {
                   'name': newName,
-                  // THAY ĐỔI: Truyền bytes nếu là web, file nếu là mobile
                   'avatarFile': kIsWeb ? null : _pickedImageFile,
                   'avatarBytes': kIsWeb ? _pickedImageBytes : null,
                 });
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[700], // Nền xanh
-                foregroundColor: Colors.white, // Chữ trắng
+                backgroundColor: saveButtonBackgroundColor, 
+                foregroundColor: saveButtonForegroundColor, 
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8.0),
                 ),
@@ -158,62 +182,71 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             const SizedBox(height: 20),
             GestureDetector(
-              onTap: _pickImage, // THAY ĐỔI: Gọi trực tiếp _pickImage
+              onTap: _pickImage,
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
                   CircleAvatar(
                     radius: 60,
                     backgroundColor: (_pickedImageFile == null && _pickedImageBytes == null && widget.currentAvatar == null && widget.currentInitial != null && widget.currentInitial!.isNotEmpty)
-                        ? Colors.blue[700] // Blue background for initial
-                        : Colors.grey[200], // Default grey for icon or if image is present
+                        ? avatarInitialBackgroundColor 
+                        : avatarDefaultBackgroundColor, 
                     backgroundImage: _pickedImageBytes != null
-                        ? MemoryImage(_pickedImageBytes!) // Ưu tiên hiển thị ảnh bytes đã chọn (web)
+                        ? MemoryImage(_pickedImageBytes!)
                         : _pickedImageFile != null
-                            ? FileImage(_pickedImageFile!) // Sau đó là ảnh file đã chọn (mobile)
-                            : widget.currentAvatar, // Hiển thị avatar hiện tại nếu không có ảnh mới
+                            ? FileImage(_pickedImageFile!)
+                            : widget.currentAvatar,
                     child: (_pickedImageFile == null && _pickedImageBytes == null && widget.currentAvatar == null)
                         ? (widget.currentInitial != null && widget.currentInitial!.isNotEmpty)
                             ? Text(
                                 widget.currentInitial!,
                                 style: TextStyle(
-                                  fontSize: 50, // Kích thước chữ cho initial
+                                  fontSize: 50,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white, // White text color for initial
+                                  color: avatarInitialTextColor, 
                                 ),
                               )
-                            : Icon(Icons.person, size: 70, color: Colors.grey[400]) // Icon mặc định
+                            : Icon(Icons.person, size: 70, color: avatarDefaultIconColor) 
                         : null,
                   ),
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: Colors.blue[700], // Màu nền icon camera
+                      color: cameraIconBackgroundColor, 
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(color: Colors.white, width: 2), // White border remains for contrast
                     ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                    child: Icon(Icons.camera_alt, color: cameraIconColor, size: 20), 
                   )
                 ],
               ),
             ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: _pickImage, // THAY ĐỔI: Gọi trực tiếp _pickImage
+              onPressed: _pickImage,
               child: Text(
                 'Thay đổi ảnh đại diện',
-                style: TextStyle(color: Colors.blue[700], fontSize: 14), // Style cho text button
+                style: TextStyle(color: changePhotoButtonColor, fontSize: 14), 
               ),
             ),
             const SizedBox(height: 40),
             TextField(
               controller: _nameController,
+              style: TextStyle(color: isDarkMode ? Colors.grey[200] : Colors.black87), // Text input color
               decoration: InputDecoration(
                 labelText: 'Tên hiển thị',
-                border: OutlineInputBorder(
+                labelStyle: TextStyle(color: textFieldLabelColor),
+                enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
+                  borderSide: BorderSide(color: textFieldBorderColor),
                 ),
-                prefixIcon: const Icon(Icons.person_outline),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5), // Use theme primary for focused border
+                ),
+                prefixIcon: Icon(Icons.person_outline, color: textFieldIconColor),
+                // Ensure hint text is also themed if you add one
+                // hintStyle: TextStyle(color: isDarkMode ? Colors.grey[600] : Colors.grey[400]),
               ),
             ),
             const SizedBox(height: 20),
