@@ -31,11 +31,18 @@ class _GmailUIState extends State<GmailUI> {
 
   final List<String> userLabels = ["Work", "Family"];
 
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _loadCurrentUserAvatar();
     _fetchEmails();
+    _searchController.addListener(() {
+      if (_searchController.text.trim().isEmpty) {
+        _fetchEmails();
+      }
+    });
   }
 
   Future<void> _fetchEmails() async {
@@ -228,6 +235,69 @@ class _GmailUIState extends State<GmailUI> {
     });
   }
 
+  Future<void> _searchEmails(String keyword) async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingEmails = true;
+    });
+
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      setState(() {
+        _emails = [];
+        _isLoadingEmails = false;
+      });
+      return;
+    }
+
+    try {
+      Query query = _firestore.collection('emails')
+        .where('involvedUserIds', arrayContains: currentUser.uid)
+        .orderBy('timestamp', descending: true);
+
+      final snapshot = await query.get();
+
+      final allUserEmails = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      // Lọc theo từ khóa (subject, body, sender, ...), không phân biệt hoa thường
+      final lowerKeyword = keyword.toLowerCase();
+      final filteredEmails = allUserEmails.where((email) {
+        final subject = (email['subject'] ?? '').toString().toLowerCase();
+        final body = (email['body'] ?? '').toString().toLowerCase();
+        // Thêm kiểm tra các trường có thể chứa tên/email người gửi
+        final senderDisplayName = (email['senderDisplayName'] ?? '').toString().toLowerCase();
+        final senderEmail = (email['senderEmail'] ?? '').toString().toLowerCase();
+        final from = (email['from'] ?? '').toString().toLowerCase();
+        return subject.contains(lowerKeyword) ||
+               body.contains(lowerKeyword) ||
+               senderDisplayName.contains(lowerKeyword) ||
+               senderEmail.contains(lowerKeyword) ||
+               from.contains(lowerKeyword);
+      }).toList();
+
+      setState(() {
+        _emails = filteredEmails;
+        _isLoadingEmails = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingEmails = false;
+        _emails = [];
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi tìm kiếm: $e')),
+          );
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -259,7 +329,7 @@ class _GmailUIState extends State<GmailUI> {
               ),
               Expanded(
                 child: TextField(
-                  readOnly: true,
+                  controller: _searchController,
                   cursorColor: Colors.black,
                   decoration: const InputDecoration(
                     hintText: "Search in mail",
@@ -269,11 +339,12 @@ class _GmailUIState extends State<GmailUI> {
                     contentPadding: EdgeInsets.symmetric(vertical: 14),
                   ),
                   style: const TextStyle(color: Colors.black87),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => SearchOverlayScreen()),
-                    );
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      _searchEmails(value.trim());
+                    } else {
+                      _fetchEmails();
+                    }
                   },
                 ),
               ),
@@ -423,6 +494,7 @@ class _GmailUIState extends State<GmailUI> {
                                 }
                                 await _firestore.collection('emails').doc(emailId).update({
                                   'emailLabels.${currentUser.uid}': currentLabels,
+                                  'starred': newStarState, // Đảm bảo cập nhật trường starred
                                 });
 
                                 if (mounted) {
@@ -466,5 +538,11 @@ class _GmailUIState extends State<GmailUI> {
         label: const Text("Compose", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500)),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }
