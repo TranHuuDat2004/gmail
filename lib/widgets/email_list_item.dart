@@ -314,52 +314,81 @@ class _EmailListItemState extends State<EmailListItem> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            email["subject"] ?? '(No Subject)',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
-              color: theme.brightness == Brightness.dark
-                  ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500]) // Lighter grays for dark mode subject
-                  : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
-            ),
-          ),
-          if (widget.isDetailedView && email["preview"] != null && (email["preview"] as String).isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2.0),
-              child: Text(
-                email["preview"],
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13, 
-                  color: theme.brightness == Brightness.dark 
-                      ? Colors.grey[600] // Lighter gray for dark mode preview
-                      : theme.colorScheme.onSurfaceVariant.withOpacity(0.6)
-                ), 
+      subtitle: widget.isDetailedView
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  email["subject"] ?? '(No Subject)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
+                    color: theme.brightness == Brightness.dark
+                        ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
+                        : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                  ),
+                ),
+                if (email["body"] != null && (email["body"] as String).trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.0),
+                    child: Text(
+                      email["body"],
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: theme.brightness == Brightness.dark
+                            ? Colors.grey[600]
+                            : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      ),
+                    ),
+                  ),
+              ],
+            )
+          : Text(
+              email["subject"] ?? '(No Subject)',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
+                color: theme.brightness == Brightness.dark
+                    ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
+                    : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
               ),
             ),
-        ],
-      ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min, 
         children: [
-          Text(
-            email["time"] ?? "",
-            style: TextStyle(
-              fontSize: 12,
-              color: theme.brightness == Brightness.dark
-                  ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500]) // Lighter grays for dark mode time
-                  : (widget.isUnread ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
-              fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
-            ),
+          // Hiển thị ngày gửi phía trên icon ngôi sao
+          Builder(
+            builder: (context) {
+              // Lấy ngày gửi từ email['timestamp'] (Firestore Timestamp hoặc DateTime)
+              final ts = email['timestamp'];
+              DateTime? dt;
+              if (ts is Timestamp) {
+                dt = ts.toDate();
+              } else if (ts is DateTime) {
+                dt = ts;
+              }
+              String formatted = '';
+              if (dt != null) {
+                formatted = '${dt.day} thg ${dt.month}';
+              }
+              return Text(
+                formatted,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.brightness == Brightness.dark
+                      ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
+                      : (widget.isUnread ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                  fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+                ),
+              );
+            },
           ),
           const SizedBox(height: 4), 
           SizedBox( 
@@ -370,15 +399,19 @@ class _EmailListItemState extends State<EmailListItem> {
                 _isStarred ? Icons.star : Icons.star_border,
                 color: _isStarred 
                     ? Colors.amber[600] 
-                    : (theme.brightness == Brightness.dark ? Colors.grey[600] : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)), // Adjusted star for dark mode
+                    : (theme.brightness == Brightness.dark ? Colors.grey[600] : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
                 size: 20,
               ),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               splashRadius: 18, 
               tooltip: _isStarred ? 'Unstar' : 'Star',
-              onPressed: () {
-                widget.onStarPressed(!_isStarred); 
+              onPressed: () async {
+                setState(() {
+                  _isStarred = !_isStarred;
+                  widget.email['starred'] = _isStarred; // Cập nhật luôn dữ liệu local để UI đồng bộ
+                });
+                await widget.onStarPressed(_isStarred); // Đảm bảo cập nhật Firestore
               },
             ),
           ),

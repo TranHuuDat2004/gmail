@@ -14,6 +14,7 @@ dependencies:
   file_picker: ^10.1.9 
   pinput: ^4.0.0 
 
+  shared_preferences: ^2.2.2
   # Các gói khác
   http: ^1.2.0
   intl: ^0.20.2

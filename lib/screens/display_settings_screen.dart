@@ -111,11 +111,19 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
               inactiveTrackColor: switchInactiveTrackColor,
               inactiveThumbColor: switchInactiveThumbColor,
               trackOutlineColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
-                // Apply border only when in light mode and the switch is in its "off" state (representing light mode active)
-                if (!isDarkMode && !states.contains(MaterialState.selected)) {
-                  return Colors.grey[700]; // Dark grey border for the track in light mode
+                return Colors.grey[500];
+              }),
+              trackColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
+                // Nếu đang bật (selected) và ở light mode thì nền track là trắng hoàn toàn
+                if (!isDarkMode && states.contains(MaterialState.selected)) {
+                  return Colors.white;
                 }
-                return null; // Default behavior for other states (no specific outline or default outline)
+                // Nếu đang bật (selected) và ở dark mode thì nền track là màu xám đậm
+                if (isDarkMode && states.contains(MaterialState.selected)) {
+                  return const Color(0xFF3c4043);
+                }
+                // Mặc định
+                return null;
               }),
             ),
             Divider(color: dividerColor),

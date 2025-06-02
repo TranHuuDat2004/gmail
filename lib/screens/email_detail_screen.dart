@@ -416,8 +416,9 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     String displayTime = '';
     if (email['timestamp'] is Timestamp) {
       DateTime dt = (email['timestamp'] as Timestamp).toDate().toLocal();
-      formattedDate = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-      displayTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+      // Format: '13:59, 2 tháng 6, 2025'
+      formattedDate = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}, ${dt.day} tháng ${dt.month}, ${dt.year}";
+      displayTime = formattedDate;
     } else {
       formattedDate = 'Unknown date';
     }
@@ -429,6 +430,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
         elevation: isDarkMode ? 0.5 : 1.0,
         iconTheme: IconThemeData(color: appBarIconColor),
         actions: [
+          IconButton(
+            icon: Icon(
+              _isStarredLocally ? Icons.star : Icons.star_border,
+              color: _isStarredLocally ? starColor : unstarColor,
+              size: 20, // nhỏ hơn
+            ),
+            onPressed: _toggleStarStatus,
+            tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
+          ),
           IconButton(
             icon: const Icon(Icons.archive_outlined),
             tooltip: 'Lưu trữ',
@@ -493,15 +503,6 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: subjectColor),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(
-                    _isStarredLocally ? Icons.star : Icons.star_border,
-                    color: _isStarredLocally ? starColor : unstarColor,
-                    size: 24,
-                  ),
-                  onPressed: _toggleStarStatus,
-                  tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
-                ),
               ],
             ),
             const SizedBox(height: 20),
@@ -549,7 +550,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   ),
                 ),
                 Text(
-                  displayTime,
+                  // Hiển thị cả ngày và giờ gửi
+                  formattedDate,
                   style: TextStyle(fontSize: 13, color: timeColor),
                 ),
               ],
@@ -568,7 +570,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildMetaDetailRow(context, "From", _fetchedSenderDisplayNameForDetail ?? email['senderEmail'] ?? email['from'] ?? 'Không rõ'), // Pass context
+                      _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'), // From: luôn là email
                       _buildMetaDetailRow(context, "To", toRecipients.join(', ')), // Pass context
                       if (ccRecipients.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipients.join(', ')), // Pass context
                       _buildMetaDetailRow(context, "Date", formattedDate), // Pass context

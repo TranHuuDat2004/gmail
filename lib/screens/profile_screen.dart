@@ -1042,6 +1042,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         activeTrackColor: switchActiveTrackColor,
         inactiveThumbColor: switchInactiveThumbColor,
         inactiveTrackColor: switchInactiveTrackColor,
+        trackOutlineColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
+          // Apply border only when in light mode and the switch is in its "off" state (2FA disabled)
+          if (!isDarkMode && !states.contains(MaterialState.selected)) {
+            return Colors.grey[700]; // Dark grey border for the track in light mode
+          }
+          return null; // Default behavior for other states
+        }),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     );

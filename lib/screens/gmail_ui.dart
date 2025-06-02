@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 import 'search_overlay_screen.dart';
+import 'search_screen.dart';
 import '../widgets/custom_drawer.dart';
 import 'email_detail_screen.dart';
 import 'compose_email_screen.dart';
@@ -344,26 +345,36 @@ class _GmailUIState extends State<GmailUI> {
                 ),
               ),
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  cursorColor: theme.colorScheme.onSurfaceVariant, // Use theme color
-                  decoration: InputDecoration(
-                    hintText: "Search in mail",
-                    hintStyle: TextStyle(color: theme.hintColor), // Use theme hint color
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none, // Explicitly remove enabled border
-                    focusedBorder: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant), // Use theme text color
-                  onSubmitted: (value) {
-                    if (value.trim().isNotEmpty) {
-                      _searchEmails(value.trim());
-                    } else {
-                      _fetchEmails();
-                    }
+                child: GestureDetector(
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => SearchScreen()),
+                    );
                   },
+                  child: AbsorbPointer(
+                    child: TextField(
+                      controller: _searchController,
+                      cursorColor: theme.colorScheme.onSurfaceVariant, // Use theme color
+                      decoration: InputDecoration(
+                        hintText: "Search in mail",
+                        hintStyle: TextStyle(color: theme.hintColor), // Use theme hint color
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none, // Explicitly remove enabled border
+                        focusedBorder: InputBorder.none,
+                        isCollapsed: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant), // Use theme text color
+                      onSubmitted: (value) {
+                        if (value.trim().isNotEmpty) {
+                          _searchEmails(value.trim());
+                        } else {
+                          _fetchEmails();
+                        }
+                      },
+                    ),
+                  ),
                 ),
               ),
               Padding(
