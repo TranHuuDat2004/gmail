@@ -21,8 +21,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await initializeDateFormatting('vi_VN', null); // Initialize Vietnamese locale data
-
+  
   if (kIsWeb) {
     try {
       await FirebaseAppCheck.instance.activate(
@@ -51,6 +50,8 @@ void main() async {
     }
   }
   
+  await initializeDateFormatting('vi_VN', null); // Initialize Vietnamese locale data
+
   runApp(const MyApp());
 }
 

@@ -1,14 +1,26 @@
-// lib/screens/email_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+// Web specific imports - conditional import
+import 'dart:html' as html show document, AnchorElement;
 // Make sure these paths are correct for your project structure
 import '../widgets/action_button.dart';
 import 'compose_email_screen.dart';
+import 'file_viewer_screen.dart';
 
 class EmailDetailScreen extends StatefulWidget {
   final Map<String, dynamic> email; // email should have 'id', and potentially 'senderId'
-  const EmailDetailScreen({super.key, required this.email});
+  final bool? isSentView; // ADDED: To indicate if this is a sent email view
+  const EmailDetailScreen({super.key, required this.email, this.isSentView});
 
   @override
   State<EmailDetailScreen> createState() => _EmailDetailScreenState();
@@ -19,12 +31,18 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   late bool _isStarredLocally;
   late bool _isReadLocally;
   User? _currentUser;
-
   // For fetched sender details
   String? _fetchedSenderDisplayNameForDetail;
   String? _fetchedSenderAvatarUrlForDetail;
   String _senderInitialLetterForDetail = '?';
   bool _isLoadingSenderDetailsForDetail = true;
+  
+  // For fetched recipient details (for Sent view)
+  String? _fetchedRecipientAvatarUrl;
+  bool _isLoadingRecipientDetails = false;
+
+  Map<String, double> _downloadProgress = {}; // Track download progress for each file
+  Set<String> _downloadingFiles = {}; // Track which files are being downloaded
 
   @override
   void initState() {
@@ -46,6 +64,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
     _fetchSenderDetailsForDetailScreen();
 
+    // Fetch recipient avatar if this is a Sent view
+    if (widget.isSentView == true) {
+      _fetchRecipientAvatarForSentView();
+    }
+
     // Automatically mark as read in Firestore if not already read by this user
     if (!_isReadLocally && _currentUser != null && widget.email['id'] != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,16 +83,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   setState(() {
                     _isReadLocally = true;
                     // Update local email data immediately
-                    if (widget.email['emailIsReadBy'] is Map) {
-                      (widget.email['emailIsReadBy'] as Map<String, dynamic>)[_currentUser!.uid] = true;
-                    } else {
-                       widget.email['emailIsReadBy'] = <String, dynamic>{_currentUser!.uid: true};
-                    }
+                    widget.email['emailIsReadBy'] = {
+                      ...widget.email['emailIsReadBy'] ?? {},
+                      _currentUser!.uid: true,
+                    };
                   });
                 }
               })
               .catchError((error) {
-                print("Failed to mark email as read for user ${_currentUser!.uid}: $error");
+                print("Error marking email as read in Firestore: $error");
                 return null;
               });
         }
@@ -128,6 +150,38 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
   }
 
+  Future<void> _fetchRecipientAvatarForSentView() async {
+    if (!mounted || widget.isSentView != true) return;
+    
+    setState(() {
+      _isLoadingRecipientDetails = true;
+    });
+
+    final List<dynamic>? recipientIds = widget.email['recipientIds'] as List<dynamic>?;
+    if (recipientIds != null && recipientIds.isNotEmpty) {
+      final String firstRecipientId = recipientIds.first.toString();
+      try {
+        DocumentSnapshot recipientDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(firstRecipientId)
+            .get();
+        
+        if (mounted && recipientDoc.exists) {
+          final data = recipientDoc.data() as Map<String, dynamic>;
+          _fetchedRecipientAvatarUrl = data['avatarUrl'] as String?;
+        }
+      } catch (e) {
+        print('Error fetching recipient avatar: $e');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingRecipientDetails = false;
+      });
+    }
+  }
+
   Future<void> _toggleStarStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newStarStatus = !_isStarredLocally;
@@ -153,22 +207,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           _isStarredLocally = newStarStatus;
           widget.email['emailLabels'] = emailLabelsMap;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(newStarStatus ? 'Đã gắn dấu sao' : 'Đã bỏ dấu sao'),
-            backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
     } catch (e) {
       print("Error updating star status for user $userId on email $emailId: $e");
       if (mounted) {
+        final theme = Theme.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi cập nhật dấu sao: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
+            content: Text('Lỗi cập nhật trạng thái sao: $e'),
+            backgroundColor: theme.colorScheme.error,
           ),
         );
       }
@@ -189,31 +236,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       if (mounted) {
         setState(() {
           _isReadLocally = newReadStatus;
-          if (widget.email['emailIsReadBy'] is Map) {
-            (widget.email['emailIsReadBy'] as Map)[_currentUser!.uid] = newReadStatus;
-          } else {
-            widget.email['emailIsReadBy'] = {_currentUser!.uid: newReadStatus};
-          }
+          widget.email['emailIsReadBy'] = {
+            ...widget.email['emailIsReadBy'] ?? {},
+            _currentUser!.uid: newReadStatus,
+          };
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(newReadStatus ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc'),
-            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        if (!newReadStatus) { // If marked as unread
-          Navigator.pop(context, {'markedAsUnread': true, 'emailId': widget.email['id']});
-        }
       }
     } catch (e) {
       print("Error updating read status: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi cập nhật trạng thái đọc: $e'),
-            backgroundColor: theme.colorScheme.error, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
+            content: Text('Lỗi cập nhật trạng thái đọc: $e'),
+            backgroundColor: theme.colorScheme.error,
           ),
         );
       }
@@ -222,42 +257,32 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   Future<void> _deleteEmail() async {
     if (_currentUser == null || widget.email['id'] == null) return;
-    final String userId = _currentUser!.uid;
-    final String emailId = widget.email['id'];
-    final theme = Theme.of(context); // Get theme for SnackBar
+    final theme = Theme.of(context);
 
     try {
       await FirebaseFirestore.instance
           .collection('emails')
-          .doc(emailId)
+          .doc(widget.email['id'])
           .update({
-              // Add current user's ID to 'isTrashedBy' list (or create if it doesn't exist)
-              'isTrashedBy': FieldValue.arrayUnion([userId]),
-              // Remove current user's ID from 'emailLabels.userId' list to untag it from inbox/other labels
-              // This ensures it doesn't show up in other views if it's only trashed by this user
-              'emailLabels.$userId': FieldValue.delete(), // Example: Delete all labels for this user for this email
-              // Or more specifically:
-              // 'emailLabels.$userId': FieldValue.arrayRemove(['Inbox', 'Starred', ...other labels this user might have applied])
-            });
+        'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Đã chuyển vào Thùng rác'),
-            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
+            content: const Text('Email đã được chuyển vào thùng rác'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
           ),
         );
-        Navigator.pop(context, {'deleted': true, 'emailId': widget.email['id']});
+        Navigator.pop(context);
       }
     } catch (e) {
-      print("Error moving email to trash: $e");
+      print("Error deleting email: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi chuyển vào thùng rác: $e'),
-            backgroundColor: theme.colorScheme.error, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
+            content: Text('Lỗi xóa email: $e'),
+            backgroundColor: theme.colorScheme.error,
           ),
         );
       }
@@ -265,79 +290,263 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   }
 
   void _assignLabels() {
+    final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Chức năng gán nhãn (chưa triển khai)'),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+        content: const Text('Gán nhãn (chưa triển khai)'),
+        backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange,
+      ),
+    );
+  }
+  // File viewing and downloading methods
+  Future<void> _viewAttachment(String attachmentUrl, String fileName) async {
+    final extension = fileName.split('.').last.toLowerCase();
+    
+    // Check if file can be viewed directly in app
+    if (_canViewInApp(extension)) {
+      try {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        // Navigate to file viewer
+        Navigator.pop(context); // Close loading dialog
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FileViewerScreen(
+              fileUrl: attachmentUrl,
+              fileName: fileName,
+              fileExtension: extension,
+            ),
+          ),
+        );
+      } catch (e) {
+        Navigator.pop(context); // Close loading dialog if still open
+        _showErrorSnackBar('Không thể mở file: $e');
+      }
+    } else {
+      // For non-viewable files, download them
+      await _downloadAttachment(attachmentUrl, fileName);
+    }
+  }
+
+  bool _canViewInApp(String extension) {
+    const viewableExtensions = [
+      'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
+      'txt', 'json', 'xml', 'html', 'css', 'js'
+    ];
+    return viewableExtensions.contains(extension);
+  }  Future<void> _downloadAttachment(String attachmentUrl, String fileName) async {
+    try {
+      // Start download tracking
+      setState(() {
+        _downloadingFiles.add(fileName);
+        _downloadProgress[fileName] = 0.0;
+      });
+
+      // Show immediate feedback
+      final theme = Theme.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đang tải xuống "$fileName"...'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.blue[700] : Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      if (kIsWeb) {
+        // For web platforms - trigger browser download
+        await _downloadFileForWeb(attachmentUrl, fileName);
+      } else {
+        // For mobile platforms - download to device storage
+        await _downloadFileForMobile(attachmentUrl, fileName);
+      }
+    } catch (e) {
+      _showErrorSnackBar('Lỗi tải xuống file: $e');
+    } finally {
+      // Clean up download tracking
+      if (mounted) {
+        setState(() {
+          _downloadingFiles.remove(fileName);
+          _downloadProgress.remove(fileName);
+        });
+      }
+    }
+  }  Future<void> _downloadFileForWeb(String url, String fileName) async {
+    try {
+      if (kIsWeb) {
+        // For web platforms - use platform-specific download
+        final response = await http.get(Uri.parse(url));
+        
+        if (response.statusCode == 200) {
+          // Update progress during download
+          for (int i = 0; i <= 100; i += 25) {
+            await Future.delayed(const Duration(milliseconds: 50));
+            if (mounted) {
+              setState(() {
+                _downloadProgress[fileName] = i / 100.0;
+              });
+            }
+          }
+          
+          // For web, we'll use a data URL to trigger download
+          final base64 = base64Encode(response.bodyBytes);
+          final dataUrl = 'data:application/octet-stream;base64,$base64';
+          
+          // Create download element and trigger click
+          final anchor = html.document.createElement('a') as html.AnchorElement;
+          anchor.href = dataUrl;
+          anchor.download = fileName;
+          anchor.style.display = 'none';
+          html.document.body!.children.add(anchor);
+          anchor.click();
+          html.document.body!.children.remove(anchor);
+          
+          // Show success message
+          final theme = Theme.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã tải xuống "$fileName" thành công!'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          throw Exception('Lỗi tải file từ server (Status: ${response.statusCode})');
+        }
+      } else {
+        // Fallback for non-web platforms
+        throw Exception('Web download chỉ hoạt động trên nền tảng web');
+      }
+    } catch (e) {
+      throw Exception('Lỗi web download: $e');
+    }
+  }
+
+  Future<void> _downloadFileForMobile(String url, String fileName) async {
+    try {
+      // Request storage permission
+      var status = await Permission.storage.request();
+      if (status != PermissionStatus.granted) {
+        // For Android 11+, try with manageExternalStorage
+        status = await Permission.manageExternalStorage.request();
+        if (status != PermissionStatus.granted) {
+          throw Exception('Cần quyền truy cập bộ nhớ để tải file');
+        }
+      }
+
+      // Get Downloads directory
+      Directory? downloadsDir;
+      if (Platform.isAndroid) {
+        // Try to use the standard Downloads folder first
+        downloadsDir = Directory('/storage/emulated/0/Download');
+        if (!await downloadsDir.exists()) {
+          // Fallback to external storage directory
+          downloadsDir = await getExternalStorageDirectory();
+          if (downloadsDir != null) {
+            downloadsDir = Directory('${downloadsDir.path}/Download');
+            if (!await downloadsDir.exists()) {
+              await downloadsDir.create(recursive: true);
+            }
+          }
+        }
+      } else if (Platform.isIOS) {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
+
+      if (downloadsDir == null) {
+        throw Exception('Không thể truy cập thư mục tải xuống');
+      }
+
+      // Create full file path with unique name if needed
+      String savePath = '${downloadsDir.path}/$fileName';
+      
+      // Ensure unique filename if file already exists
+      int counter = 1;
+      String originalFileName = fileName;
+      String nameWithoutExt = originalFileName.contains('.') 
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : originalFileName;
+      String extension = originalFileName.contains('.') 
+          ? originalFileName.substring(originalFileName.lastIndexOf('.'))
+          : '';
+      
+      while (await File(savePath).exists()) {
+        fileName = '${nameWithoutExt}_$counter$extension';
+        savePath = '${downloadsDir.path}/$fileName';
+        counter++;
+      }
+
+      // Download file using Dio with progress tracking
+      Dio dio = Dio();
+      await dio.download(
+        url,
+        savePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1 && mounted) {
+            setState(() {
+              _downloadProgress[originalFileName] = received / total;
+            });
+          }
+        },
+      );
+
+      // Show success message
+      final theme = Theme.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã tải xuống "$fileName" vào thư mục Downloads'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      throw Exception('Lỗi mobile download: $e');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: theme.colorScheme.error,
         behavior: SnackBarBehavior.floating,
       ),
     );
   }
-  
-  void _archiveEmail() {
-     if (_currentUser == null || widget.email['id'] == null) return;
-    final String userId = _currentUser!.uid;
-    final String emailId = widget.email['id'];
-    final theme = Theme.of(context); // Get theme for SnackBar
 
-    // Example: Move to an "Archived" label and remove "Inbox"
-    // This is a conceptual implementation. Your actual label logic might vary.
-    FirebaseFirestore.instance.collection('emails').doc(emailId).set({
-      'emailLabels': {
-        userId: FieldValue.arrayUnion(['Archived']),
-      },
-      // To remove from Inbox, you might remove the 'Inbox' label specifically
-      // 'emailLabels.$userId': FieldValue.arrayRemove(['Inbox']),
-      // Or ensure 'involvedUserIds' still includes the user if archived emails are shown in 'All mail'
-    }, SetOptions(merge: true)) // Use merge to update existing labels without overwriting other users'
-    .then((_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Đã lưu trữ'),
-            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        Navigator.pop(context, {'archived': true, 'emailId': emailId});
-      }
-    }).catchError((e) {
-       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi lưu trữ: $e'),
-            backgroundColor: theme.colorScheme.error, // Themed SnackBar
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-       }
-    });
-  }
-
-  Widget _buildMetaDetailRow(BuildContext context, String label, String value) { // Added context
-    if (value.isEmpty) return const SizedBox.shrink();
+  Widget _buildMetaDetailRow(BuildContext context, String label, String value) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    final labelColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final labelColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     final valueColor = isDarkMode ? Colors.grey[200] : Colors.black87;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 60,
+            width: 50,
             child: Text(
-              "$label:",
-              style: TextStyle(fontSize: 14, color: labelColor, fontWeight: FontWeight.w500),
+              '$label:',
+              style: TextStyle(fontSize: 13, color: labelColor, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: SelectableText( // Made value selectable
+            child: SelectableText(
               value,
-              style: TextStyle(fontSize: 14, color: valueColor),
+              style: TextStyle(fontSize: 13, color: valueColor),
             ),
           ),
         ],
@@ -350,78 +559,94 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
+    // Get email data
+    final Map<String, dynamic> email = widget.email;
+
+    // Format timestamp
+    String formattedDate = '';
+    if (email['timestamp'] != null) {
+      DateTime dateTime;
+      if (email['timestamp'] is Timestamp) {
+        dateTime = (email['timestamp'] as Timestamp).toDate();
+      } else {
+        dateTime = DateTime.parse(email['timestamp'].toString());
+      }
+      formattedDate = DateFormat('dd/MM/yyyy HH:mm', 'vi_VN').format(dateTime);
+    }
+
+    // Get attachments
+    final List<dynamic> attachments = email['attachments'] ?? [];
+
+    // Determine display names and recipient info
+    final bool isSentEmail = widget.isSentView == true;
+    String senderDisplayNameToShow;
+    String? senderAvatarUrlToShow;
+    String senderInitialToShow;
+    String recipientDisplayToShow = '';
+
+    if (isSentEmail) {
+      // For sent emails, show recipient info
+      final List<dynamic>? toRecipients = email['toRecipients'] as List<dynamic>?;
+      final List<dynamic>? recipientDisplayNames = email['recipientDisplayNames'] as List<dynamic>?;
+      
+      if (toRecipients != null && toRecipients.isNotEmpty) {
+        final recipientEmail = toRecipients.first.toString();
+        senderDisplayNameToShow = recipientEmail.contains('@') ? recipientEmail.split('@')[0] : recipientEmail;
+        recipientDisplayToShow = senderDisplayNameToShow;
+      } else {
+        senderDisplayNameToShow = 'Người nhận không rõ';
+        recipientDisplayToShow = senderDisplayNameToShow;
+      }
+      
+      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl;
+      senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
+    } else {
+      // For received emails, show sender info
+      if (_isLoadingSenderDetailsForDetail) {
+        senderDisplayNameToShow = email['senderDisplayName'] as String? ??
+                                  email["senderEmail"] as String? ??
+                                  email["from"] as String? ??
+                                  'Đang tải...';
+      } else {
+        senderDisplayNameToShow = _fetchedSenderDisplayNameForDetail ??
+                                  email['senderDisplayName'] as String? ??
+                                  email["senderEmail"] as String? ??
+                                  email["from"] as String? ??
+                                  'Không rõ';
+      }
+      senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail ?? email['senderAvatarUrl'] as String?;
+      senderInitialToShow = _senderInitialLetterForDetail;
+    }
+
+    // Recipients for meta details
+    final List<String> toRecipients = (email['toRecipients'] as List<dynamic>)
+        ?.map((e) => e.toString()).toList() ?? [];
+    final List<String> ccRecipients = (email['ccRecipients'] as List<dynamic>)
+        ?.map((e) => e.toString()).toList() ?? [];
+
     // Define colors based on theme
-    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[50];
     final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
     final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final starColor = Colors.amber;
+    final unstarColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
     final popupMenuIconColor = appBarIconColor;
     final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
     final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
-    final subjectColor = isDarkMode ? Colors.grey[100] : const Color(0xFF1f1f1f);
-    final starColor = isDarkMode ? Colors.yellow[600] : Colors.amber[600];
-    final unstarColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
-    final avatarBackgroundColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final avatarTextColor = isDarkMode ? Colors.grey[300] : Colors.white70;
-    final senderNameColor = isDarkMode ? Colors.grey[200] : const Color(0xFF3c4043);
-    final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
-    final timeColor = recipientMetaColor;
+    final subjectColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final avatarBackgroundColor = isDarkMode ? Colors.blue[700] : Colors.blue[700];
+    final avatarTextColor = Colors.white;
+    final senderNameColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
+    final timeColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     final metaDetailBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
-    final dividerColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
-    final bodyTextColor = isDarkMode ? Colors.grey[200] : const Color(0xFF1f1f1f);
-    final attachmentHeaderColor = recipientMetaColor;
-    final attachmentCardBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
-    final attachmentCardBorderColor = metaDetailBorderColor;
-    final attachmentIconColor = isDarkMode ? Colors.blue[300] : Colors.blueAccent;
-    final attachmentTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
-    final attachmentActionIconColor = recipientMetaColor;
-    final bottomNavBarBackgroundColor = appBarBackgroundColor;
-    final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
-    
-    // Colors for ActionButton based on the screenshot for dark mode
-    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF303134) : Colors.grey[200]; // Dark grey for dark mode button bg (Gmail style)
-    final actionButtonForegroundColor = isDarkMode ? const Color(0xFFE8EAED) : Colors.black87; // Light grey for dark mode button text/icon (Gmail style)
-
-    final email = widget.email;
-    String senderDisplayNameToShow;
-    String senderInitialToShow;
-    String? senderAvatarUrlToShow;
-
-    if (_isLoadingSenderDetailsForDetail) {
-      senderDisplayNameToShow = email["senderDisplayName"] as String? ??
-                                email["senderEmail"] as String? ??
-                                email["from"] as String? ??
-                                'Đang tải...';
-      senderInitialToShow = '?';
-      senderAvatarUrlToShow = null;
-    } else {
-      senderDisplayNameToShow = _fetchedSenderDisplayNameForDetail ??
-                                email["senderEmail"] as String? ??
-                                'Không rõ';
-      senderInitialToShow = _senderInitialLetterForDetail;
-      senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail;
-    }
-
-    // If display name is an email, show only the part before @
-    if (senderDisplayNameToShow.contains('@') && (senderDisplayNameToShow == _fetchedSenderDisplayNameForDetail || senderDisplayNameToShow == email["senderEmail"])) {
-        senderDisplayNameToShow = senderDisplayNameToShow.split('@')[0];
-    }
-
-    List<String> toRecipients = List<String>.from(email['toRecipients'] ?? email['to'] ?? []);
-    List<String> ccRecipients = List<String>.from(email['ccRecipients'] ?? email['cc'] ?? []);
-    List<String> bccRecipients = List<String>.from(email['bccRecipients'] ?? email['bcc'] ?? []); // Usually not shown
-    List<String> attachments = List<String>.from(email['attachments'] ?? []);
-
-
-    String formattedDate;
-    String displayTime = '';
-    if (email['timestamp'] is Timestamp) {
-      DateTime dt = (email['timestamp'] as Timestamp).toDate().toLocal();
-      // Format: '13:59, 2 tháng 6, 2025'
-      formattedDate = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}, ${dt.day} tháng ${dt.month}, ${dt.year}";
-      displayTime = formattedDate;
-    } else {
-      formattedDate = 'Unknown date';
-    }
+    final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final bodyTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.blue[700];
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
 
     return Scaffold(
       backgroundColor: scaffoldBackgroundColor,
@@ -434,7 +659,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             icon: Icon(
               _isStarredLocally ? Icons.star : Icons.star_border,
               color: _isStarredLocally ? starColor : unstarColor,
-              size: 20, // nhỏ hơn
+              size: 20,
             ),
             onPressed: _toggleStarStatus,
             tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
@@ -443,19 +668,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
             icon: const Icon(Icons.label_outline),
             tooltip: 'Gán nhãn',
             onPressed: _assignLabels,
-            color: appBarIconColor, // Explicitly set color
+            color: appBarIconColor,
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Chuyển vào Thùng rác',
             onPressed: _deleteEmail,
-            color: appBarIconColor, // Explicitly set color
+            color: appBarIconColor,
           ),
           IconButton(
             icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined),
             tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
             onPressed: _toggleReadStatus,
-            color: appBarIconColor, // Explicitly set color
+            color: appBarIconColor,
           ),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: popupMenuIconColor),
@@ -466,7 +691,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: const Text('Di chuyển đến... (chưa triển khai)'),
-                    backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
+                    backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -536,12 +761,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              "tới tôi", 
+                              isSentEmail ? "đến ${recipientDisplayToShow}" : "từ ${senderDisplayNameToShow}", 
                               style: TextStyle(fontSize: 13, color: recipientMetaColor),
                             ),
-                             Icon(
-                              _showMetaDetails ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                              color: recipientMetaColor, size: 20
+                            const SizedBox(width: 4),
+                            Icon(
+                              _showMetaDetails ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              size: 16,
+                              color: recipientMetaColor,
                             ),
                           ],
                         ),
@@ -550,13 +777,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   ),
                 ),
                 Text(
-                  // Hiển thị cả ngày và giờ gửi
                   formattedDate,
                   style: TextStyle(fontSize: 13, color: timeColor),
                 ),
               ],
             ),
-            // const SizedBox(height: 16), // Adjusted by meta details visibility
             if (_showMetaDetails)
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
@@ -565,15 +790,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: metaDetailBorderColor, width: 0.8),
-                    color: isDarkMode ? Colors.grey[850] : Colors.white, // Background for meta details box
+                    color: isDarkMode ? Colors.grey[850] : Colors.white,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'), // From: luôn là email
-                      _buildMetaDetailRow(context, "To", toRecipients.join(', ')), // Pass context
-                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipients.join(', ')), // Pass context
-                      _buildMetaDetailRow(context, "Date", formattedDate), // Pass context
+                      _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
+                      _buildMetaDetailRow(context, "To", toRecipients.join(', ')),
+                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipients.join(', ')),
+                      _buildMetaDetailRow(context, "Date", formattedDate),
                     ],
                   ),
                 ),
@@ -589,50 +814,95 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Tệp đính kèm (${attachments.length})", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: attachmentHeaderColor)),
+                    Text("Tệp đính kèm (${attachments.length})", 
+                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: attachmentHeaderColor)),
                     const SizedBox(height: 8),
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: attachments.length,
-                      itemBuilder: (context, index) {
-                        final attachmentUrl = attachments[index];
-                        String fileName = attachmentUrl.split('/').last.split('?').first;
-                        try { // Decode URL component to get a readable file name
-                          fileName = Uri.decodeComponent(fileName.split('%2F').last);
-                        } catch (_) {}
+                      itemCount: attachments.length,                      itemBuilder: (context, index) {
+                        final attachment = attachments[index];
+                        // Handle different attachment data structures
+                        String fileName;
+                        String? downloadUrl;
+                        
+                        if (attachment is String) {
+                          // If attachment is just a URL string
+                          downloadUrl = attachment;
+                          fileName = _extractFileNameFromUrl(attachment);
+                        } else if (attachment is Map<String, dynamic>) {
+                          // If attachment is a map with metadata
+                          fileName = attachment['name'] ?? attachment['fileName'] ?? 'Unknown file';
+                          downloadUrl = attachment['downloadUrl'] ?? attachment['url'] ?? attachment.toString();
+                        } else {
+                          // Fallback
+                          fileName = 'Unknown file';
+                          downloadUrl = attachment.toString();
+                        }
+                        
+                        final bool isDownloading = _downloadingFiles.contains(fileName);
+                        final double? progress = _downloadProgress[fileName];
 
                         return Card(
-                          elevation: isDarkMode ? 0.2 : 0.5,
-                          color: attachmentCardBackgroundColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: attachmentCardBorderColor)
-                          ),
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          color: isDarkMode ? const Color(0xFF2C2C2C) : Colors.white,
                           child: ListTile(
-                            leading: Icon(Icons.insert_drive_file_outlined, color: attachmentIconColor),
-                            title: Text(fileName, style: TextStyle(color: attachmentTextColor, fontSize: 14)),
-                            trailing: IconButton(icon: Icon(Icons.download_outlined, color: attachmentActionIconColor), onPressed: (){
-                               ScaffoldMessenger.of(context).showSnackBar(
-                                 SnackBar(
-                                   content: Text("Tải $fileName... (chưa triển khai)"),
-                                   backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-                                   behavior: SnackBarBehavior.floating,
+                            leading: Icon(
+                              _getFileIcon(fileName),
+                              color: isDarkMode ? Colors.blue[300] : Colors.blueAccent,
+                            ),
+                            title: Text(
+                              fileName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                              ),
+                            ),                            subtitle: attachment is Map<String, dynamic> && attachment['size'] != null 
+                                ? Text(
+                                    _formatFileSize(attachment['size']),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                    ),
+                                  )
+                                : null,
+                            trailing: isDownloading
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      value: progress,
+                                      strokeWidth: 2,
+                                      color: isDarkMode ? Colors.blue[300] : Colors.blueAccent,
+                                    ),                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_canViewInApp(fileName.split('.').last.toLowerCase()))
+                                        IconButton(
+                                          icon: const Icon(Icons.visibility_outlined),
+                                          onPressed: downloadUrl != null
+                                              ? () => _viewAttachment(downloadUrl!, fileName)
+                                              : null,
+                                          tooltip: 'Xem file',
+                                          iconSize: 20,
+                                        ),
+                                      IconButton(
+                                        icon: const Icon(Icons.download_outlined),
+                                        onPressed: downloadUrl != null
+                                            ? () => _downloadAttachment(downloadUrl!, fileName)
+                                            : null,
+                                        tooltip: 'Tải xuống',
+                                        iconSize: 20,
+                                      ),
+                                    ],
                                   ),
-                                );
-                            }),
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("Mở $fileName... (chưa triển khai)"),
-                                  backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87, // Themed SnackBar
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            },
+                            onTap: downloadUrl != null
+                                ? () => _viewAttachment(downloadUrl!, fileName)
+                                : null,
                           ),
                         );
-                      }
+                      },
                     ),
                   ],
                 ),
@@ -644,7 +914,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
             color: bottomNavBarBackgroundColor,
-            border: Border(top: BorderSide(color: bottomNavBarBorderColor, width: 0.5))),
+            border: Border(top: BorderSide(color: bottomNavBarBorderColor!, width: 0.5))),
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -658,7 +928,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => ComposeEmailScreen(
-                        replyOrForwardEmail: widget.email, 
+                        replyOrForwardEmail: widget.email,
                         composeMode: 'reply',
                       ),
                     ),
@@ -712,5 +982,85 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
         ),
       ),
     );
+  }
+
+  IconData _getFileIcon(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+        return Icons.image;
+      case 'mp4':
+      case 'avi':
+      case 'mkv':
+      case 'mov':
+      case 'wmv':
+      case 'webm':
+        return Icons.video_file;
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+      case 'ogg':
+      case 'flac':
+        return Icons.audio_file;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return Icons.archive;
+      case 'txt':
+        return Icons.text_snippet;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }  String _formatFileSize(dynamic size) {
+    if (size == null) return 'Unknown size';
+    int bytes = size is int ? size : int.tryParse(size.toString()) ?? 0;
+    
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  String _extractFileNameFromUrl(String url) {
+    try {
+      // Extract filename from Firebase Storage URL
+      final uri = Uri.parse(url);
+      String path = uri.path;
+      
+      // For Firebase Storage URLs, the file name is usually in the path
+      if (path.contains('/o/')) {
+        // Firebase Storage format: /v0/b/{bucket}/o/{path}
+        String encoded = path.split('/o/').last.split('?').first;
+        String decoded = Uri.decodeComponent(encoded);
+        
+        // Extract just the filename part
+        if (decoded.contains('/')) {
+          return decoded.split('/').last;
+        }
+        return decoded;
+      }
+      
+      // Fallback: get last segment of path
+      return path.split('/').last.split('?').first;
+    } catch (e) {
+      // If URL parsing fails, return a default name
+      return 'attachment_${DateTime.now().millisecondsSinceEpoch}';
+    }
   }
 }

@@ -495,12 +495,14 @@ class _GmailUIState extends State<GmailUI> {
                                 } catch (e) {
                                   print("Error marking email as read: $e");
                                 }
-                              }
-                              // Navigate to EmailDetailScreen and wait for result
+                              }                              // Navigate to EmailDetailScreen and wait for result
                               final result = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => EmailDetailScreen(email: email),
+                                  builder: (context) => EmailDetailScreen(
+                                    email: email,
+                                    isSentView: selectedLabel == "Sent", // Pass isSentView based on current selected label
+                                  ),
                                 ),
                               );
                               // If result indicates the draft was edited, refresh the drafts list

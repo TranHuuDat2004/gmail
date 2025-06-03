@@ -505,13 +505,18 @@ class _SearchScreenState extends State<SearchScreen> {
                           print("Error marking email as read from search: $e");
                           // Optionally show a SnackBar
                         }
-                      }
-                      // Navigate to EmailDetailScreen
+                      }                      // Navigate to EmailDetailScreen
                       if (mounted) {
+                        final currentUser = _auth.currentUser;
+                        final bool isActuallySentItem = currentUser != null && email['senderId'] == currentUser.uid;
+                        
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => EmailDetailScreen(email: email),
+                            builder: (context) => EmailDetailScreen(
+                              email: email,
+                              isSentView: isActuallySentItem, // Pass isSentView based on whether this user sent the email
+                            ),
                           ),
                         );
                       }
