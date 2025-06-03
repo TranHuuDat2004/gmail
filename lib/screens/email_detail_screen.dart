@@ -43,6 +43,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   Map<String, double> _downloadProgress = {}; // Track download progress for each file
   Set<String> _downloadingFiles = {}; // Track which files are being downloaded
+  bool _emailDataWasUpdated = false; // Ensure this flag is present
 
   @override
   void initState() {
@@ -152,31 +153,42 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
   Future<void> _fetchRecipientAvatarForSentView() async {
     if (!mounted || widget.isSentView != true) return;
-    
-    setState(() {
-      _isLoadingRecipientDetails = true;
-    });
 
+    if (mounted) {
+      setState(() {
+        _isLoadingRecipientDetails = true;
+      });
+    }
+
+    String? fetchedUrl;
     final List<dynamic>? recipientIds = widget.email['recipientIds'] as List<dynamic>?;
+
     if (recipientIds != null && recipientIds.isNotEmpty) {
       final String firstRecipientId = recipientIds.first.toString();
       try {
+        print("EmailDetailScreen (Sent View): Fetching avatar for recipient ID: $firstRecipientId");
         DocumentSnapshot recipientDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(firstRecipientId)
             .get();
         
-        if (mounted && recipientDoc.exists) {
+        if (recipientDoc.exists) {
           final data = recipientDoc.data() as Map<String, dynamic>;
-          _fetchedRecipientAvatarUrl = data['avatarUrl'] as String?;
+          fetchedUrl = data['avatarUrl'] as String?;
+          print("EmailDetailScreen (Sent View): Fetched recipient avatar URL: $fetchedUrl for ID: $firstRecipientId");
+        } else {
+          print("EmailDetailScreen (Sent View): Recipient document not found for ID: $firstRecipientId");
         }
       } catch (e) {
-        print('Error fetching recipient avatar: $e');
+        print('Error fetching recipient avatar for ID $firstRecipientId: $e');
       }
+    } else {
+      print("EmailDetailScreen (Sent View): No recipient IDs found in email data.");
     }
 
     if (mounted) {
       setState(() {
+        _fetchedRecipientAvatarUrl = fetchedUrl;
         _isLoadingRecipientDetails = false;
       });
     }
@@ -205,8 +217,10 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       if (mounted) {
         setState(() {
           _isStarredLocally = newStarStatus;
-          widget.email['emailLabels'] = emailLabelsMap;
+          widget.email['emailLabels'] = emailLabelsMap; // Update the local email map
+          widget.email['starred'] = newStarStatus;   // CRITICAL: Update 'starred' field in the local email map
         });
+        _emailDataWasUpdated = true; // Set the flag
       }
     } catch (e) {
       print("Error updating star status for user $userId on email $emailId: $e");
@@ -552,10 +566,22 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
         ],
       ),
     );
+  }  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (_emailDataWasUpdated) {
+          Navigator.pop(context, widget.email); // Return the updated email data
+          return false; // Prevent default pop, as we've handled it
+        }
+        return true; // Allow default pop if no data was changed
+      },
+      child: _buildEmailDetailScaffold(context), // Original Scaffold UI moved to a new method
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // This new method contains the entire Scaffold and its UI logic from your original build method
+  Widget _buildEmailDetailScaffold(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
@@ -568,8 +594,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       DateTime dateTime;
       if (email['timestamp'] is Timestamp) {
         dateTime = (email['timestamp'] as Timestamp).toDate();
-      } else {
+      } else if (email['timestamp'] is String) { // Handle case where timestamp might be a String
         dateTime = DateTime.parse(email['timestamp'].toString());
+      } else {
+        // Fallback or error handling if timestamp is neither Timestamp nor String
+        dateTime = DateTime.now(); // Or some other default
       }
       formattedDate = DateFormat('dd/MM/yyyy HH:mm', 'vi_VN').format(dateTime);
     }
@@ -587,18 +616,24 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     if (isSentEmail) {
       // For sent emails, show recipient info
       final List<dynamic>? toRecipients = email['toRecipients'] as List<dynamic>?;
-      final List<dynamic>? recipientDisplayNames = email['recipientDisplayNames'] as List<dynamic>?;
+      // final List<dynamic>? recipientDisplayNames = email['recipientDisplayNames'] as List<dynamic>?; // This was marked as unused by analyzer
       
       if (toRecipients != null && toRecipients.isNotEmpty) {
-        final recipientEmail = toRecipients.first.toString();
-        senderDisplayNameToShow = recipientEmail.contains('@') ? recipientEmail.split('@')[0] : recipientEmail;
-        recipientDisplayToShow = senderDisplayNameToShow;
+        final firstRecipient = toRecipients.first;
+        if (firstRecipient is Map && firstRecipient['email'] != null) {
+          recipientDisplayToShow = firstRecipient['name'] as String? ?? firstRecipient['email'].toString().split('@')[0];
+        } else if (firstRecipient is String) {
+          recipientDisplayToShow = firstRecipient.contains('@') ? firstRecipient.split('@')[0] : firstRecipient;
+        } else {
+          recipientDisplayToShow = 'Người nhận không rõ';
+        }
+        senderDisplayNameToShow = recipientDisplayToShow; // For avatar initial
       } else {
         senderDisplayNameToShow = 'Người nhận không rõ';
         recipientDisplayToShow = senderDisplayNameToShow;
       }
       
-      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl;
+      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl; // Assuming this is fetched correctly
       senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
     } else {
       // For received emails, show sender info
@@ -619,10 +654,21 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
 
     // Recipients for meta details
-    final List<String> toRecipients = (email['toRecipients'] as List<dynamic>)
-        ?.map((e) => e.toString()).toList() ?? [];
-    final List<String> ccRecipients = (email['ccRecipients'] as List<dynamic>)
-        ?.map((e) => e.toString()).toList() ?? [];
+    final List<String> toRecipientsList = (email['toRecipients'] as List<dynamic>?)
+        ?.map((e) {
+          if (e is Map) return e['email']?.toString() ?? e['name']?.toString() ?? e.toString();
+          return e.toString();
+        })
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+    final List<String> ccRecipientsList = (email['ccRecipients'] as List<dynamic>?)
+        ?.map((e) {
+          if (e is Map) return e['email']?.toString() ?? e['name']?.toString() ?? e.toString();
+          return e.toString();
+        })
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+
 
     // Define colors based on theme
     final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[50];
@@ -645,15 +691,24 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
     final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.blue[700];
-    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF3C4043) : Colors.blue[700]; // Dark grey background for dark mode
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white;    // Light blue text/icon for dark mode
 
     return Scaffold(
       backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: appBarBackgroundColor,
         elevation: isDarkMode ? 0.5 : 1.0,
-        iconTheme: IconThemeData(color: appBarIconColor),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: appBarIconColor),
+          onPressed: () {
+            if (_emailDataWasUpdated) {
+              Navigator.pop(context, widget.email);
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
         actions: [
           IconButton(
             icon: Icon(
@@ -735,13 +790,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
-                  backgroundColor: avatarBackgroundColor,
-                  backgroundImage: senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty
+                  backgroundColor: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
+                      ? Colors.transparent // Transparent if network image is shown
+                      : avatarBackgroundColor, // Background color for default asset or initials
+                  backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
                       ? NetworkImage(senderAvatarUrlToShow)
-                      : null,
+                      : const AssetImage('assets/images/default_avatar.png'), // Fallback to default asset
                   child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
-                      ? Text(senderInitialToShow, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor))
-                      : null,
+                      // Show initials if network avatar is not available (displayed on top of default asset image)
+                      ? Text(
+                          senderInitialToShow,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor)
+                        )
+                      : null, // No child if network image is successfully loaded
                   radius: 22,
                 ),
                 const SizedBox(width: 12),
@@ -796,8 +857,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
-                      _buildMetaDetailRow(context, "To", toRecipients.join(', ')),
-                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipients.join(', ')),
+                      _buildMetaDetailRow(context, "To", toRecipientsList.join(', ')),
+                      if (ccRecipientsList.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipientsList.join(', ')),
                       _buildMetaDetailRow(context, "Date", formattedDate),
                     ],
                   ),
@@ -820,22 +881,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: attachments.length,                      itemBuilder: (context, index) {
+                      itemCount: attachments.length,
+                      itemBuilder: (context, index) {
                         final attachment = attachments[index];
-                        // Handle different attachment data structures
                         String fileName;
                         String? downloadUrl;
                         
                         if (attachment is String) {
-                          // If attachment is just a URL string
                           downloadUrl = attachment;
                           fileName = _extractFileNameFromUrl(attachment);
                         } else if (attachment is Map<String, dynamic>) {
-                          // If attachment is a map with metadata
                           fileName = attachment['name'] ?? attachment['fileName'] ?? 'Unknown file';
                           downloadUrl = attachment['downloadUrl'] ?? attachment['url'] ?? attachment.toString();
                         } else {
-                          // Fallback
                           fileName = 'Unknown file';
                           downloadUrl = attachment.toString();
                         }
@@ -857,7 +915,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                                 fontSize: 14,
                                 color: isDarkMode ? Colors.grey[200] : Colors.black87,
                               ),
-                            ),                            subtitle: attachment is Map<String, dynamic> && attachment['size'] != null 
+                            ),
+                            subtitle: attachment is Map<String, dynamic> && attachment['size'] != null 
                                 ? Text(
                                     _formatFileSize(attachment['size']),
                                     style: TextStyle(
@@ -874,7 +933,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                                       value: progress,
                                       strokeWidth: 2,
                                       color: isDarkMode ? Colors.blue[300] : Colors.blueAccent,
-                                    ),                                  )
+                                    ),
+                                  )
                                 : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -907,15 +967,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   ],
                 ),
               ),
-            const SizedBox(height: 80),
+            const SizedBox(height: 80), // Space for bottom navigation bar
           ],
         ),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
             color: bottomNavBarBackgroundColor,
-            border: Border(top: BorderSide(color: bottomNavBarBorderColor!, width: 0.5))),
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+            border: Border(top: BorderSide(color: bottomNavBarBorderColor ?? Colors.transparent, width: 0.5))),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0).copyWith(bottom: MediaQuery.of(context).padding.bottom /2 + 10), // Adjust for safe area
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [

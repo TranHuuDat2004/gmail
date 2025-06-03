@@ -279,11 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: CircleAvatar(
               backgroundColor: activeTabColor,
               backgroundImage: _userAvatarImage ?? const AssetImage('assets/images/default_avatar.png'),
-              child: (_userAvatarImage == null || _userAvatarImage is AssetImage)
-                  ? (_userInitial.isNotEmpty
-                      ? Text(_userInitial, style: TextStyle(color: isDarkMode ? Colors.black87 : Colors.white, fontSize: 16))
-                      : Icon(Icons.person, color: isDarkMode ? Colors.black87 : Colors.white, size: 16))
-                  : null,
+              child: null, // Ensures no icon or text is overlaid
             ),
           ),
         ],
@@ -749,7 +745,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required String value,
     ImageProvider? currentAvatarForDisplay,
-    String? initialForDisplay,
+    String? initialForDisplay, // This parameter is no longer used for displaying initials
     VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
@@ -759,7 +755,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final subtitleColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
     final trailingIconColor = isDarkMode ? Colors.grey[600] : Colors.grey[500];
     final avatarPlaceholderColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
-    final avatarInitialTextColor = isDarkMode ? Colors.black87 : Colors.white;
+    // final avatarInitialTextColor = isDarkMode ? Colors.black87 : Colors.white; // No longer needed
 
 
     Widget leadingWidget;
@@ -768,10 +764,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundImage: currentAvatarForDisplay ?? const AssetImage('assets/images/default_avatar.png'),
         backgroundColor: avatarPlaceholderColor,
         radius: 18,
-        child: (currentAvatarForDisplay == null && initialForDisplay != null && initialForDisplay.isNotEmpty)
-            ? Text(initialForDisplay,
-                style: TextStyle(color: avatarInitialTextColor, fontSize: 16))
-            : null,
+        // Remove the child that displays the initial
       );
     } else {
       leadingWidget = Icon(icon, color: iconColor);

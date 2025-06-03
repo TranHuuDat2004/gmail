@@ -394,16 +394,9 @@ class _GmailUIState extends State<GmailUI> {
                     backgroundImage: (_userPhotoURL != null && _userPhotoURL!.isNotEmpty)
                         ? NetworkImage(_userPhotoURL!)
                         : const AssetImage('assets/images/default_avatar.png'),
-                    child: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
-                        ? (_currentUserDisplayName != null && _currentUserDisplayName!.isNotEmpty
-                            ? Text(
-                                _currentUserDisplayName![0].toUpperCase(),
-                                style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18),
-                              )
-                            : Icon(Icons.person, color: theme.colorScheme.onPrimary, size: 18))
-                        : null,
+                    child: null, // Ensures no icon or text is overlaid on the backgroundImage
                     backgroundColor: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
-                        ? theme.colorScheme.primary
+                        ? theme.colorScheme.primary // Fallback color if asset image is transparent or fails
                         : Colors.transparent,
                   ),
                 ),
@@ -495,7 +488,8 @@ class _GmailUIState extends State<GmailUI> {
                                 } catch (e) {
                                   print("Error marking email as read: $e");
                                 }
-                              }                              // Navigate to EmailDetailScreen and wait for result
+                              }
+                              // Navigate to EmailDetailScreen and wait for result
                               final result = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -505,8 +499,13 @@ class _GmailUIState extends State<GmailUI> {
                                   ),
                                 ),
                               );
-                              // If result indicates the draft was edited, refresh the drafts list
-                              if (result == true && selectedLabel == "Drafts" && mounted) {
+                              // If result is a Map (email was updated in detail screen), refresh the list
+                              if (result is Map) {
+                                if (mounted) {
+                                  _fetchEmails(); // Reload the entire list
+                                }
+                              } else if (result == true && selectedLabel == "Drafts" && mounted) {
+                                // This handles a specific case for drafts, e.g. if a draft was sent
                                 _fetchEmails();
                               }
                             },

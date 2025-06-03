@@ -37,7 +37,6 @@ class _EmailListItemState extends State<EmailListItem> {
     _isStarred = widget.email['starred'] ?? false;
     _fetchDisplayDetails();
   }
-
   @override
   void didUpdateWidget(EmailListItem oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -405,13 +404,12 @@ class _EmailListItemState extends State<EmailListItem> {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               splashRadius: 18, 
-              tooltip: _isStarred ? 'Unstar' : 'Star',
-              onPressed: () async {
+              tooltip: _isStarred ? 'Unstar' : 'Star',              onPressed: () async {
                 setState(() {
                   _isStarred = !_isStarred;
-                  widget.email['starred'] = _isStarred; // Cập nhật luôn dữ liệu local để UI đồng bộ
                 });
-                await widget.onStarPressed(_isStarred); // Đảm bảo cập nhật Firestore
+                widget.email['starred'] = _isStarred;
+                await widget.onStarPressed(_isStarred);
               },
             ),
           ),
