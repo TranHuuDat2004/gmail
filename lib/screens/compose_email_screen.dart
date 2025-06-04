@@ -1,14 +1,16 @@
 // lib/screens/compose_email_screen.dart
+import 'dart:convert';
 import 'dart:io'; // For File
 import 'dart:typed_data'; // For Uint8List (web bytes)
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart'; // Bạn có thể dùng một trong hai hoặc cả hai
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async'; // Thêm vào đầu file, dưới các import hiện có
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class ComposeEmailScreen extends StatefulWidget {
   final Map<String, dynamic>? replyOrForwardEmail;
@@ -30,188 +32,105 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   final TextEditingController _bccController = TextEditingController();
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _subjectController = TextEditingController();
-  final TextEditingController _bodyController = TextEditingController();
+  late quill.QuillController _quillController;
+  final FocusNode _quillFocusNode = FocusNode();
   bool _showCcBcc = false;
-  List<File> _attachments =
-      []; // Sử dụng List<File> cho cả image_picker và file_picker
-  Map<String, Uint8List> _webAttachmentData = {}; // Store file bytes for web
-  final ImagePicker _imagePicker =
-      ImagePicker(); // Đổi tên để tránh nhầm lẫn nếu dùng cả hai
-
-  // Thêm các biến mới cho auto-save
-  String? _draftId; // ID của tài liệu nháp (nếu đang chỉnh sửa)
-  bool _hasChanges = false; // Theo dõi thay đổi
-  String _saveStatus = ''; // Trạng thái lưu
-  Timer? _debounceTimer; // Timer cho debounce
-  bool _isAutoSaving = false; // Trạng thái đang auto-save
+  List<File> _attachments = [];
+  Map<String, Uint8List> _webAttachmentData = {};  String? _draftId;
+  Timer? _debounceTimer;
   bool _isSending = false;
 
+  String _defaultFontFamily = 'Roboto';
+  double _defaultEditorFontSize = 14.0;
+  bool _isLoadingAppSettings = true;
   @override
-  void initState() {
-    super.initState();
+  @override
+void initState() {
+  super.initState();
+  _quillController = quill.QuillController.basic();
+  // Add listener to update button states when selection changes
+  _quillController.addListener(() {
+    if (mounted) {
+      // Điều này sẽ gọi lại build, cập nhật value của Dropdowns
+      // và isToggled của các _buildToolbarButton
+      setState(() {});
+    }
+  });
+  _loadAppSettingsAndInitialize();
+}
+
+  final FocusNode _toFocusNode = FocusNode();
+
+  Future<void> _loadAppSettingsAndInitialize() async {
+    setState(() {
+      _isLoadingAppSettings = true;
+    });
+
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      try {
+        DocumentSnapshot userSettings = await FirebaseFirestore.instance
+            .collection('user_settings')
+            .doc(currentUser.uid)
+            .get();
+        if (userSettings.exists && userSettings.data() != null) {
+          Map<String, dynamic> data = userSettings.data() as Map<String, dynamic>;
+          _defaultFontFamily = data['editorFontFamily'] ?? 'Roboto';
+          _defaultEditorFontSize = (data['editorFontSize'] as num?)?.toDouble() ?? 14.0;
+        }
+      } catch (e) {
+        print("Error loading user settings: $e");
+      }
+    }
+
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email;
     _fromController.text = currentUserEmail ?? "anonymous@example.com";
 
     if (widget.replyOrForwardEmail != null) {
       _populateFieldsForReplyForward();
-      // Nếu là nháp, lưu _draftId
       if (widget.replyOrForwardEmail!.containsKey('isDraft') &&
           widget.replyOrForwardEmail!['isDraft'] == true) {
         _draftId = widget.replyOrForwardEmail!['id'];
-        // Điền các trường từ nháp
-        _toController.text =
-            (widget.replyOrForwardEmail!['toRecipients'] as List<dynamic>?)
-                    ?.join(', ') ??
-                '';
-        _ccController.text =
-            (widget.replyOrForwardEmail!['ccRecipients'] as List<dynamic>?)
-                    ?.join(', ') ??
-                '';
-        _bccController.text =
-            (widget.replyOrForwardEmail!['bccRecipients'] as List<dynamic>?)
-                    ?.join(', ') ??
-                '';
+        _toController.text = (widget.replyOrForwardEmail!['toRecipients'] as List<dynamic>?)?.join(', ') ?? '';
+        _ccController.text = (widget.replyOrForwardEmail!['ccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
+        _bccController.text = (widget.replyOrForwardEmail!['bccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
         _subjectController.text = widget.replyOrForwardEmail!['subject'] ?? '';
-        _bodyController.text = widget.replyOrForwardEmail!['body'] ?? '';
         _showCcBcc = widget.replyOrForwardEmail!['showCcBcc'] ?? false;
-        // Xử lý đính kèm (nếu có)
-        final attachmentPaths = List<String>.from(
-            widget.replyOrForwardEmail!['attachmentLocalPaths'] ?? []);
+        
+        if (widget.replyOrForwardEmail!['bodyDeltaJson'] != null) {
+          try {
+            final deltaJson = jsonDecode(widget.replyOrForwardEmail!['bodyDeltaJson'] as String);
+            _quillController = quill.QuillController(
+              document: quill.Document.fromJson(deltaJson),
+              selection: const TextSelection.collapsed(offset: 0),
+            );
+          } catch (e) {            print("Error loading draft bodyDeltaJson: $e");
+            final plainText = widget.replyOrForwardEmail!['bodyPlainText'] ?? widget.replyOrForwardEmail!['body'] ?? '';
+            _quillController.document = quill.Document()..insert(0, plainText);
+          }} else if (widget.replyOrForwardEmail!['bodyPlainText'] != null || widget.replyOrForwardEmail!['body'] != null){
+            final plainText = widget.replyOrForwardEmail!['bodyPlainText'] ?? widget.replyOrForwardEmail!['body'] ?? '';
+             _quillController.document = quill.Document()..insert(0, plainText);
+        }
+        final attachmentPaths = List<String>.from(widget.replyOrForwardEmail!['attachmentLocalPaths'] ?? []);
         _attachments = attachmentPaths.map((path) => File(path)).toList();
-      }
-    } else {
+      }    } else {
+      // New email, don't add any default formatting - let Quill handle it naturally
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.replyOrForwardEmail == null) {
           FocusScope.of(context).requestFocus(_toFocusNode);
         }
       });
-    }
-
-    // Thêm listener để theo dõi thay đổi
-    _toController.addListener(_onTextChanged);
+    }_toController.addListener(_onTextChanged);
     _ccController.addListener(_onTextChanged);
     _bccController.addListener(_onTextChanged);
     _subjectController.addListener(_onTextChanged);
-    _bodyController.addListener(_onTextChanged);
-  }
-
-// Thêm hàm _onTextChanged
-  void _onTextChanged() {
-    _hasChanges = true;
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), () {
-      if (_hasChanges && mounted) {
-        _autoSaveDraft();
-      }
-    });
-  }
-
-  Future<void> _autoSaveDraft() async {
-    if (!mounted) return;
-    final theme = Theme.of(context);
-
-    // Không lưu nếu tất cả trường rỗng
-    if (_toController.text.trim().isEmpty &&
-        _ccController.text.trim().isEmpty &&
-        _bccController.text.trim().isEmpty &&
-        _subjectController.text.trim().isEmpty &&
-        _bodyController.text.trim().isEmpty &&
-        _attachments.isEmpty) {
-      setState(() {
-        _saveStatus = '';
-      });
-      return;
-    }
-
+    
     setState(() {
-      _isAutoSaving = true;
-      _saveStatus = 'Đang lưu nháp...';
+      _isLoadingAppSettings = false;
     });
-
-    try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) throw Exception("User not logged in.");
-
-      List<String> attachmentLocalPaths =
-          _attachments.map((f) => f.path).toList();
-
-      final draftData = {
-        'from': _fromController.text,
-        'toRecipients': _toController.text
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
-        'ccRecipients': _ccController.text.isNotEmpty
-            ? _ccController.text
-                .split(',')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-            : [],
-        'bccRecipients': _bccController.text.isNotEmpty
-            ? _bccController.text
-                .split(',')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-            : [],
-        'subject': _subjectController.text.trim(),
-        'body': _bodyController.text.trim(),
-        'attachmentLocalPaths': attachmentLocalPaths,
-        'timestamp': FieldValue.serverTimestamp(),
-        'showCcBcc': _showCcBcc,
-      };
-
-      if (_draftId != null) {
-        // Cập nhật nháp hiện có
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('drafts')
-            .doc(_draftId)
-            .set(draftData, SetOptions(merge: true));
-      } else {
-        // Tạo nháp mới
-        final docRef = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('drafts')
-            .add(draftData);
-        _draftId = docRef.id;
-      }
-
-      if (mounted) {
-        setState(() {
-          _hasChanges = false;
-          _saveStatus =
-              'Đã lưu nháp lúc ${DateTime.now().toString().substring(11, 16)}';
-        });
-      }
-    } catch (e) {
-      print("Error auto-saving draft: $e");
-      if (mounted) {
-        setState(() {
-          _saveStatus = 'Lỗi lưu nháp';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi lưu nháp tự động: $e'),
-            backgroundColor: theme.colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAutoSaving = false;
-        });
-      }
-    }
+  }  void _onTextChanged() {
+    // Track changes for potential future use
   }
-
-  final FocusNode _toFocusNode = FocusNode();
 
   void _populateFieldsForReplyForward() {
     final email = widget.replyOrForwardEmail!;
@@ -219,19 +138,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     String originalSubject = email['subject'] ?? '';
     String originalBody = email['body'] ?? email['bodyContent'] ?? '';
 
-    String quotedBody =
-        "\n\n\n-------- ${widget.composeMode == 'forward' ? 'Forwarded Message' : 'Original Message'} --------\n"
-        "From: $originalSender\n"
-        "Date: ${email['timestamp'] != null ? email['timestamp'].toString() : 'Unknown date'}\n"
-        "Subject: $originalSubject\n"
-        "\n$originalBody";
+    String quotedBody = "\n\n$originalBody";
 
     if (widget.composeMode == 'reply') {
       _toController.text = originalSender;
       _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
           ? originalSubject
           : "Re: $originalSubject";
-      _bodyController.text = quotedBody;
+      _quillController.document = quill.Document()..insert(0, quotedBody);
     } else if (widget.composeMode == 'replyAll') {
       _toController.text = originalSender;
       List<String> originalCc = List<String>.from(email['ccRecipients'] ?? []);
@@ -239,15 +153,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
           ? originalSubject
           : "Re: $originalSubject";
-      _bodyController.text = quotedBody;
+      _quillController.document = quill.Document()..insert(0, quotedBody);
     } else if (widget.composeMode == 'forward') {
       _subjectController.text = originalSubject.toLowerCase().startsWith("fwd:")
           ? originalSubject
           : "Fwd: $originalSubject";
-      _bodyController.text = quotedBody;
+      _quillController.document = quill.Document()..insert(0, quotedBody);
     }
-    _bodyController.selection =
-        TextSelection.fromPosition(const TextPosition(offset: 0));
+    _quillController.moveCursorToPosition(0);
   }
 
   Future<void> _pickAttachments() async {
@@ -259,8 +172,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     const int maxFileSizeMB = 25; // Gmail limit per file
     const int maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
 
-    if (_attachments.length >= maxFiles) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    if (_attachments.length >= maxFiles) {      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Chỉ có thể đính kèm tối đa $maxFiles tệp'),
           backgroundColor: theme.brightness == Brightness.dark
@@ -269,9 +181,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      setState(() {
-        _hasChanges = true; // Đánh dấu thay đổi khi thêm đính kèm
-      });
       return;
     }
 
@@ -386,8 +295,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (_toController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              const Text('Please enter at least one recipient.'), // MODIFIED
+          content: const Text('Please enter at least one recipient.'), // MODIFIED
           backgroundColor: theme.brightness == Brightness.dark
               ? Colors.orange[700]
               : Colors.orange[800],
@@ -461,6 +369,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         }
         return;
       }
+
       List<String> attachmentUrls = [];
       if (_attachments.isNotEmpty) {
         for (int i = 0; i < _attachments.length; i++) {
@@ -491,15 +400,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             attachmentUrls.add(downloadUrl);
           } catch (e) {
             print('Error uploading attachment ${file.path}: $e');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Lỗi tải lên tệp $fileName: $e'),
-                  backgroundColor: theme.colorScheme.error,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
           }
         }
       }
@@ -655,24 +555,30 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         }
       }
 
+      final bodyPlainText = _quillController.document.toPlainText();
+      final bodyDeltaJson = jsonEncode(_quillController.document.toDelta().toJson());
+
+      final String? finalSubject = _subjectController.text.trim().isEmpty ? null : _subjectController.text.trim();
+      final String? finalBodyPlainText = bodyPlainText.trim().isEmpty ? null : bodyPlainText.trim();
+
       final emailData = {
-        'senderId': currentSenderId, // Use currentSenderId
+        'senderId': currentSenderId,
         'from': userEmail,
         'toRecipients': toRecipients,
         'ccRecipients': ccRecipients,
         'bccRecipients': bccRecipients,
-        'subject': _subjectController.text.trim(),
-        'body': _bodyController.text.trim(),
+        'subject': finalSubject,
+        'body': finalBodyPlainText, // Ensure this key is 'body' if that's what email_list_item expects for bodyPlainText
+        'bodyPlainText': finalBodyPlainText, // Keeping this for explicit storage if needed elsewhere
+        'bodyDeltaJson': bodyDeltaJson,
         'timestamp': FieldValue.serverTimestamp(),
         'attachments': attachmentUrls,
         'emailLabels': emailLabels,
         'emailIsReadBy': emailIsReadBy,
-        'involvedUserIds':
-            involvedUserIds.toSet().toList(), // Ensure unique UIDs
+        'involvedUserIds': involvedUserIds.toSet().toList(),
       };
 
-      await docRef
-          .set(emailData); // MODIFIED - use set with pre-generated docRef
+      await docRef.set(emailData);
 
       // Xóa nháp nếu đang chỉnh sửa
       if (_draftId != null) {
@@ -725,8 +631,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (!mounted) return;
     final theme = Theme.of(context);
 
-    if (_bodyController.text.trim().isEmpty &&
-        _subjectController.text.trim().isEmpty &&
+    final bodyPlainText = _quillController.document.toPlainText().trim();
+    final bodyDeltaJson = jsonEncode(_quillController.document.toDelta().toJson());
+
+    final String? finalSubject = _subjectController.text.trim().isEmpty ? null : _subjectController.text.trim();
+    final String? finalBodyPlainText = bodyPlainText.isEmpty ? null : bodyPlainText;
+
+    if (finalBodyPlainText == null &&
+        finalSubject == null &&
         _toController.text.trim().isEmpty &&
         _attachments.isEmpty) {
       Navigator.pop(context);
@@ -737,8 +649,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) throw Exception("User not logged in.");
 
-      List<String> attachmentLocalPaths =
-          _attachments.map((f) => f.path).toList();
+      List<String> attachmentLocalPaths = _attachments.map((f) => f.path).toList();
 
       final draftData = {
         'from': _fromController.text,
@@ -747,18 +658,19 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             .map((e) => e.trim())
             .where((e) => e.isNotEmpty)
             .toList(),
-        'ccLabels': _ccController.text.isNotEmpty
+        'ccRecipients': _ccController.text.isNotEmpty
             ? _ccController.text
                 .split(',')
                 .map((e) => e.trim())
                 .where((e) => e.isNotEmpty)
                 .toList()
             : [],
-        'bccLabels': _bccController.text.isNotEmpty
+        'bccRecipients': _bccController.text.isNotEmpty
             ? _bccController.text.split(',').map((e) => e.trim()).toList()
             : [],
-        'subject': _subjectController.text.trim(),
-        'body': _bodyController.text.trim(),
+        'subject': finalSubject,
+        'bodyPlainText': finalBodyPlainText,
+        'bodyDeltaJson': bodyDeltaJson,
         'attachmentLocalPaths': attachmentLocalPaths,
         'timestamp': FieldValue.serverTimestamp(),
         'showCcBcc': _showCcBcc,
@@ -807,85 +719,51 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       }
     }
   }
-
   void _discardEmail() {
-    if (_bodyController.text.trim().isNotEmpty ||
+    final bodyPlainText = _quillController.document.toPlainText().trim();
+    if (bodyPlainText.isNotEmpty ||
         _subjectController.text.trim().isNotEmpty ||
         _toController.text.trim().isNotEmpty ||
         _attachments.isNotEmpty) {
-      showDialog(
-        // MODIFIED
-        context: context,
-        builder: (BuildContext dialogContext) {
-          final dialogTheme = Theme.of(dialogContext);
-          final isDialogDark = dialogTheme.brightness == Brightness.dark;
-          return AlertDialog(
-            backgroundColor:
-                isDialogDark ? const Color(0xFF2C2C2C) : Colors.white,
-            title: Text('Discard email?',
-                style: TextStyle(
-                    color: isDialogDark ? Colors.grey[200] : Colors.black87)),
-            content: Text(
-                'Are you sure you want to discard this email and lose your changes?',
-                style: TextStyle(
-                    color: isDialogDark ? Colors.grey[400] : Colors.black54)),
-            actions: <Widget>[
-              TextButton(
-                child: Text('CANCEL',
-                    style: TextStyle(
-                        color: isDialogDark
-                            ? Colors.blue[300]
-                            : Colors.blue[700])),
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-              ),
-              TextButton(
-                child: Text('DISCARD',
-                    style: TextStyle(
-                        color:
-                            isDialogDark ? Colors.red[300] : Colors.red[700])),
-                style: TextButton.styleFrom(
-                    foregroundColor: isDialogDark
-                        ? Colors.red[300]
-                        : Colors.red[
-                            700]), // Ensure foreground color is also themed
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          );
-        },
-      );
+      // Auto-save as draft when closing with content
+      _saveDraft();
     } else {
+      // Just close if no content
       Navigator.pop(context);
     }
   }
 
   @override
   void dispose() {
-    _debounceTimer?.cancel(); // Hủy timer
+    _debounceTimer?.cancel();
     _toController.dispose();
     _ccController.dispose();
     _bccController.dispose();
     _fromController.dispose();
     _subjectController.dispose();
-    _bodyController.dispose();
+    _quillController.dispose();
+    _quillFocusNode.dispose();
     _toFocusNode.dispose();
     super.dispose();
   }
 
-  // Phần Widget build(BuildContext context) giữ nguyên như bạn đã cung cấp
-  // Chỉ cần đảm bảo nút "Gửi" gọi _sendEmailAndSaveToFirestore
-  // và các nút/menu khác gọi đúng hàm (_saveDraft, _discardEmail, _pickAttachments)
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingAppSettings) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF121212)
+            : Colors.white,
+        appBar: AppBar(
+          title: const Text('Loading...'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
-    // Define colors based on theme
     final scaffoldBackgroundColor =
         isDarkMode ? const Color(0xFF121212) : Colors.white;
     final appBarBackgroundColor =
@@ -898,11 +776,9 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     final popupMenuIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
     final popupMenuBackgroundColor =
         isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
-    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
-    final dividerColor =
+    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;    final dividerColor =
         isDarkMode ? Colors.grey[700]! : const Color(0xFFE0E0E0);
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
-    final textFieldHintColor = isDarkMode ? Colors.grey[500] : Colors.black54;
     final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
     final attachmentChipBackgroundColor =
         isDarkMode ? Colors.grey[700] : Colors.grey[300];
@@ -919,9 +795,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: appBarBackgroundColor,
-        elevation: isDarkMode
-            ? 0.5
-            : 1.0, // Slightly different elevation for dark mode
+        elevation: isDarkMode ? 0.5 : 1.0,
         leading: IconButton(
           icon: Icon(Icons.close, color: appBarIconColor),
           tooltip: 'Hủy thư',
@@ -950,7 +824,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               onPressed: _isSending ? null : _sendEmailAndSaveToFirestore),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: popupMenuIconColor),
-            color: popupMenuBackgroundColor, // Theme for popup menu background
+            color: popupMenuBackgroundColor,
             onSelected: (value) {
               if (value == 'save_draft') {
                 _saveDraft();
@@ -969,17 +843,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                 child:
                     Text('Hủy bỏ', style: TextStyle(color: popupMenuTextColor)),
               ),
-              const PopupMenuDivider(), // Removed color property
-              PopupMenuItem<String>(
-                value: 'schedule_send',
-                child: Text('Lên lịch gửi',
-                    style: TextStyle(color: popupMenuTextColor)),
-              ),
-              PopupMenuItem<String>(
-                value: 'confidential_mode',
-                child: Text('Chế độ bảo mật',
-                    style: TextStyle(color: popupMenuTextColor)),
-              ),
             ],
           ),
         ],
@@ -996,7 +859,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               padding: const EdgeInsets.all(0),
               children: [
                 _buildRecipientField(
-                  context: context, // Pass context
+                  context: context,
                   label: "Đến",
                   controller: _toController,
                   focusNode: _toFocusNode,
@@ -1015,7 +878,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                   _buildRecipientField(
                       context: context,
                       label: "Cc",
-                      controller: _ccController), // Pass context
+                      controller: _ccController),
                   Divider(
                       height: 0,
                       indent: 16,
@@ -1024,67 +887,209 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                   _buildRecipientField(
                       context: context,
                       label: "Bcc",
-                      controller: _bccController), // Pass context
+                      controller: _bccController),
                 ],
                 Divider(
                     height: 0, indent: 16, endIndent: 16, color: dividerColor),
                 _buildFromField(
                     context: context,
-                    controller: _fromController), // Pass context
+                    controller: _fromController),
                 Divider(
-                    height: 0, indent: 16, endIndent: 16, color: dividerColor),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: TextField(
-                    controller: _subjectController,
-                    cursorColor: cursorColor,
-                    style: TextStyle(color: textFieldTextColor, fontSize: 16),
-                    decoration: InputDecoration(
-                      hintText: "Chủ đề",
-                      border: InputBorder.none,
-                      enabledBorder:
-                          InputBorder.none, // Ensure no border when enabled
-                      focusedBorder:
-                          InputBorder.none, // Ensure no border when focused
-                      disabledBorder:
-                          InputBorder.none, // Ensure no border when disabled
-                      errorBorder:
-                          InputBorder.none, // Ensure no border on error
-                      focusedErrorBorder:
-                          InputBorder.none, // Ensure no border on focused error
-                      hintStyle: TextStyle(color: textFieldHintColor),
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 16.0),
-                    ),
+                    height: 0, indent: 16, endIndent: 16, color: dividerColor),                Container(
+                  padding: const EdgeInsets.only(left: 16.0, right: 8.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 50,
+                        child: Text("Chủ đề", style: TextStyle(fontSize: 16, color: cursorColor)),
+                      ),
+                      Expanded(                        child: TextField(
+                          controller: _subjectController,
+                          cursorColor: cursorColor,
+                          style: TextStyle(color: textFieldTextColor, fontSize: 16),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(vertical: 16.0),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 48),
+                    ],
                   ),
                 ),
                 Divider(height: 0, color: dividerColor),
-                Padding(
+                Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: TextField(
-                    controller: _bodyController,
-                    cursorColor: cursorColor,
-                    style: TextStyle(color: textFieldTextColor, fontSize: 16),
-                    decoration: InputDecoration(
-                      hintText: "Soạn email",
-                      border: InputBorder.none,
-                      enabledBorder:
-                          InputBorder.none, // Ensure no border when enabled
-                      focusedBorder:
-                          InputBorder.none, // Ensure no border when focused
-                      disabledBorder:
-                          InputBorder.none, // Ensure no border when disabled
-                      errorBorder:
-                          InputBorder.none, // Ensure no border on error
-                      focusedErrorBorder:
-                          InputBorder.none, // Ensure no border on focused error
-                      hintStyle: TextStyle(color: textFieldHintColor),
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 16.0),
-                    ),
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    autofocus: widget.replyOrForwardEmail == null,
+                  child: Column(                    children: [
+                      // Custom simplified toolbar to prevent freezing
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.grey[850] : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SingleChildScrollView(                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+// Font Family Dropdown
+Container(
+  margin: const EdgeInsets.all(4),
+  padding: const EdgeInsets.symmetric(horizontal: 8),
+  decoration: BoxDecoration(
+    border: Border.all(color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!),
+    borderRadius: BorderRadius.circular(4),
+  ),
+  child: DropdownButtonHideUnderline(
+    child: DropdownButton<String>(
+      // Lấy font hiện tại từ selection hoặc typing attributes
+      value: _getCurrentFontFamily(),
+      style: TextStyle(color: textFieldTextColor, fontSize: 12),
+      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,
+      // Chỉ hiển thị các font bạn đã khai báo trong pubspec.yaml
+      // Đảm bảo tên 'TimesNewRoman' khớp với 'family' trong pubspec.yaml
+      items: ['Arial', 'Roboto', 'TimesNewRoman'].map((font) {
+        return DropdownMenuItem(
+          value: font,
+          child: Text(font, style: TextStyle(fontFamily: font, fontSize: 12))
+        );
+      }).toList(),
+      onChanged: (font) {
+        if (font != null) {
+          // Áp dụng font cho selection hoặc typing attributes
+          _applyFontAndSizeToSelection(fontFamily: font);
+        }
+      },
+    ),
+  ),
+),
+// Font Size Dropdown
+Container(
+  margin: const EdgeInsets.all(4),
+  padding: const EdgeInsets.symmetric(horizontal: 8),
+  decoration: BoxDecoration(
+    border: Border.all(color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!),
+    borderRadius: BorderRadius.circular(4),
+  ),
+  child: DropdownButtonHideUnderline(
+    child: DropdownButton<double>(
+      // Lấy font size hiện tại từ selection hoặc typing attributes
+      value: _getCurrentFontSize(),
+      style: TextStyle(color: textFieldTextColor, fontSize: 12),
+      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,
+      items: [10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0].map((size) {
+        return DropdownMenuItem(
+            value: size,
+            // Hiển thị 'pt' cho rõ ràng hơn
+            child: Text('${size.toInt()}pt')
+        );
+      }).toList(),
+      onChanged: (size) {
+        if (size != null) {
+          // Áp dụng font size cho selection hoặc typing attributes
+          _applyFontAndSizeToSelection(fontSize: size);
+        }
+      },
+    ),
+  ),
+),                              // Basic formatting buttons
+                              _buildToolbarButton(Icons.format_bold, () {
+                                _formatText('bold');
+                                setState(() {}); // Update button states immediately
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode, isToggled: _isFormatActive('bold')),
+                              _buildToolbarButton(Icons.format_italic, () {
+                                _formatText('italic');
+                                setState(() {}); // Update button states immediately
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode, isToggled: _isFormatActive('italic')),
+                              _buildToolbarButton(Icons.format_underlined, () {
+                                _formatText('underline');
+                                setState(() {}); // Update button states immediately
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode, isToggled: _isFormatActive('underline')),
+                              const VerticalDivider(width: 1),
+                              _buildToolbarButton(Icons.format_align_left, () {
+                                _formatText('align-left');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                              _buildToolbarButton(Icons.format_align_center, () {
+                                _formatText('align-center');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                              _buildToolbarButton(Icons.format_align_right, () {
+                                _formatText('align-right');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                              const VerticalDivider(width: 1),
+                              _buildToolbarButton(Icons.format_list_bulleted, () {
+                                _formatText('list-bullet');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                              _buildToolbarButton(Icons.format_list_numbered, () {
+                                _formatText('list-numbered');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                              const VerticalDivider(width: 1),
+                              _buildToolbarButton(Icons.format_clear, () {
+                                _formatText('clear');
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (mounted) _quillFocusNode.requestFocus();
+                                });
+                              }, isDarkMode),
+                            ],
+                          ),
+                        ),
+                      ),                      const SizedBox(height: 8),
+                      Container(
+                        constraints: const BoxConstraints(
+                          minHeight: 200,
+                          maxHeight: 400,
+                        ),                        child: quill.QuillEditor.basic(
+                          focusNode: _quillFocusNode,
+                          configurations: quill.QuillEditorConfigurations(
+                            controller: _quillController,
+                            placeholder: "Soạn email...",
+                            sharedConfigurations: quill.QuillSharedConfigurations(
+                              locale: const Locale('vi'),
+                            ),
+                            scrollable: true,
+                            autoFocus: false,
+                            padding: const EdgeInsets.all(16),
+                            expands: false,
+                            customStyles: quill.DefaultStyles(
+                              paragraph: quill.DefaultTextBlockStyle(
+                                TextStyle(
+                                  fontSize: _defaultEditorFontSize,
+                                  fontFamily: _defaultFontFamily,
+                                  color: textFieldTextColor,
+                                ),
+                                const quill.VerticalSpacing(0, 8),
+                                const quill.VerticalSpacing(0, 0),
+                                null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (_attachments.isNotEmpty) ...[
@@ -1124,8 +1129,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                                   color: attachmentChipLabelColor,
                                   fontSize: 12),
                             ),
-                            onDeleted: () {
-                              setState(() {
+                            onDeleted: () {                              setState(() {
                                 String fileKey = kIsWeb
                                     ? file.path
                                     : file.path
@@ -1135,7 +1139,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                                         .last;
                                 _webAttachmentData.remove(fileKey);
                                 _attachments.removeAt(index);
-                                _hasChanges = true; // Đánh dấu thay đổi
                               });
                             },
                             deleteIconColor: attachmentChipDeleteIconColor,
@@ -1155,20 +1158,19 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       ),
     );
   }
-
   Widget _buildRecipientField(
-      {required BuildContext context, // Add context
+      {required BuildContext context,
       required String label,
       required TextEditingController controller,
       FocusNode? focusNode,
       VoidCallback? onToggleCcBcc}) {
-    final theme = Theme.of(context); // Get theme
+    final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
     final iconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
 
-    return Padding(
+    return Container(
       padding: const EdgeInsets.only(left: 16.0, right: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1177,8 +1179,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             width: 50,
             child:
                 Text(label, style: TextStyle(fontSize: 16, color: cursorColor)),
-          ),
-          Expanded(
+          ),          Expanded(
             child: TextField(
               controller: controller,
               focusNode: focusNode,
@@ -1186,15 +1187,8 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               style: TextStyle(color: textFieldTextColor, fontSize: 16),
               decoration: const InputDecoration(
                 border: InputBorder.none,
-                enabledBorder:
-                    InputBorder.none, // Ensure no border when enabled
-                focusedBorder:
-                    InputBorder.none, // Ensure no border when focused
-                disabledBorder:
-                    InputBorder.none, // Ensure no border when disabled
-                errorBorder: InputBorder.none, // Ensure no border on error
-                focusedErrorBorder:
-                    InputBorder.none, // Ensure no border on focused error
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 16.0),
               ),
               keyboardType: TextInputType.emailAddress,
@@ -1216,18 +1210,16 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       ),
     );
   }
-
   Widget _buildFromField(
       {required BuildContext context,
       required TextEditingController controller}) {
-    // Add context
-    final theme = Theme.of(context); // Get theme
+    final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
     final iconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
 
-    return Padding(
+    return Container(
       padding: const EdgeInsets.only(left: 16.0, right: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1236,25 +1228,16 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             width: 50,
             child:
                 Text("Từ", style: TextStyle(fontSize: 16, color: cursorColor)),
-          ),
-          Expanded(
+          ),          Expanded(
             child: TextField(
               controller: controller,
               readOnly: true,
-              cursorColor:
-                  cursorColor, // Though readonly, good to have for consistency
+              cursorColor: cursorColor,
               style: TextStyle(color: textFieldTextColor, fontSize: 16),
               decoration: const InputDecoration(
                 border: InputBorder.none,
-                enabledBorder:
-                    InputBorder.none, // Ensure no border when enabled
-                focusedBorder:
-                    InputBorder.none, // Ensure no border when focused
-                disabledBorder:
-                    InputBorder.none, // Ensure no border when disabled
-                errorBorder: InputBorder.none, // Ensure no border on error
-                focusedErrorBorder:
-                    InputBorder.none, // Ensure no border on focused error
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 16.0),
               ),
             ),
@@ -1274,6 +1257,186 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             constraints: const BoxConstraints(),
           )
         ],
+      ),
+    );
+  }  // Helper methods for custom toolbar
+  // Helper: lấy font hiện tại tại vị trí con trỏ hoặc selection (giống Gmail)
+// Helper: lấy font hiện tại tại vị trí con trỏ hoặc selection
+String _getCurrentFontFamily() {
+  // _defaultFontFamily là font được load từ user_settings, dùng làm fallback
+  // hoặc font mặc định của editor.
+  final attrs = _quillController.getSelectionStyle().attributes;
+  return attrs[quill.Attribute.font.key]?.value ?? _defaultFontFamily;
+}
+
+// Helper: lấy font size hiện tại tại vị trí con trỏ hoặc selection
+double _getCurrentFontSize() {
+  // _defaultEditorFontSize là size được load từ user_settings, dùng làm fallback.
+  final attrs = _quillController.getSelectionStyle().attributes;
+  final sizeValue = attrs[quill.Attribute.size.key]?.value;
+
+  if (sizeValue != null) {
+    // Quill có thể lưu size dạng string "12" hoặc "16px"
+    // Chuyển đổi an toàn về double
+    final String sizeString = sizeValue.toString().replaceAll('px', '');
+    final double? parsedSize = double.tryParse(sizeString);
+    if (parsedSize != null) {
+      return parsedSize;
+    }
+  }
+  return _defaultEditorFontSize;
+}
+
+  // Sửa lại _isFormatActive: kiểm tra thực sự selection có định dạng không (giống Gmail)
+  // Sửa lại _isFormatActive: kiểm tra thực sự selection có định dạng không (giống Gmail)
+bool _isFormatActive(String format) {
+  final attrs = _quillController.getSelectionStyle().attributes;
+  switch (format) {
+    case 'bold':
+      return attrs[quill.Attribute.bold.key]?.value == true;
+    case 'italic':
+      return attrs[quill.Attribute.italic.key]?.value == true;
+    case 'underline':
+      return attrs[quill.Attribute.underline.key]?.value == true;
+    // Bạn có thể thêm các case khác nếu cần, ví dụ:
+    // case 'strike':
+    //   return attrs[quill.Attribute.strikeThrough.key]?.value == true;
+    // case 'code-block':
+    //   return attrs[quill.Attribute.codeBlock.key]?.value == true;
+  }
+  return false;
+}
+
+  // Sửa lại _applyFontToSelection: chỉ áp dụng cho selection, nếu không thì chỉ set cho future typing
+  // Hàm mới để áp dụng font và/hoặc size
+void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
+  final selection = _quillController.selection;
+
+  if (!_quillFocusNode.hasFocus) {
+    FocusScope.of(context).requestFocus(_quillFocusNode);
+  }
+
+  if (fontFamily != null) {
+    if (selection.isValid && !selection.isCollapsed) {
+      _quillController.formatText(selection.start, selection.end - selection.start, quill.Attribute.fromKeyValue('font', fontFamily));
+    } else {
+      _quillController.formatSelection(quill.Attribute.fromKeyValue('font', fontFamily));
+    }
+  }
+
+  if (fontSize != null) {
+    final fontSizeString = fontSize.toStringAsFixed(0);
+    if (selection.isValid && !selection.isCollapsed) {
+      _quillController.formatText(selection.start, selection.end - selection.start, quill.Attribute.fromKeyValue('size', fontSizeString));
+    } else {
+      _quillController.formatSelection(quill.Attribute.fromKeyValue('size', fontSizeString));
+    }
+  }
+
+  if (mounted) {
+    setState(() {});
+  }
+}
+
+  void _formatText(String format) {
+  // Đảm bảo editor có focus
+  if (!_quillFocusNode.hasFocus) {
+    FocusScope.of(context).requestFocus(_quillFocusNode);
+  }
+
+  quill.Attribute? attributeToToggle; // Thuộc tính cần bật/tắt (Bold, Italic, Underline)
+  bool isCurrentlyActive = false; // Trạng thái hiện tại của thuộc tính đó (active hay không)
+
+  switch (format) {
+    case 'bold':
+      attributeToToggle = quill.Attribute.bold;
+      isCurrentlyActive = _isFormatActive('bold');
+      break;
+    case 'italic':
+      attributeToToggle = quill.Attribute.italic;
+      isCurrentlyActive = _isFormatActive('italic');
+      break;
+    case 'underline':
+      attributeToToggle = quill.Attribute.underline;
+      isCurrentlyActive = _isFormatActive('underline');
+      break;
+    case 'align-left':
+      _quillController.formatSelection(quill.Attribute.leftAlignment);
+      break;
+    case 'align-center':
+      _quillController.formatSelection(quill.Attribute.centerAlignment);
+      break;
+    case 'align-right':
+      _quillController.formatSelection(quill.Attribute.rightAlignment);
+      break;
+    case 'list-bullet':
+      // Toggle list: nếu đang là list thì bỏ, không thì áp dụng
+      // Flutter Quill xử lý việc này khi bạn truyền Attribute.ul
+      _quillController.formatSelection(quill.Attribute.ul);
+      break;
+    case 'list-numbered':
+      _quillController.formatSelection(quill.Attribute.ol);
+      break;
+    case 'clear':
+      final selection = _quillController.selection;
+      if (selection.isValid && !selection.isCollapsed) { // Nếu có bôi đen
+        final int len = selection.end - selection.start;
+        // Xóa các định dạng cơ bản cho vùng chọn
+        _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.bold, null));
+        _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.italic, null));
+        _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.underline, null));
+        // Tùy chọn: Xóa cả font và size nếu muốn "Clear All Formatting"
+        // _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.font, null));
+        // _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.size, null));
+      } else { // Nếu chỉ là con trỏ, xóa định dạng cho typing attributes
+        _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.bold, null));
+        _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.italic, null));
+        _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.underline, null));
+        // _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.font, null));
+        // _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.size, null));
+      }
+      break;
+    default:
+      return; // Không làm gì nếu format không xác định
+  }
+
+  // Nếu là thuộc tính cần toggle (Bold, Italic, Underline)
+  if (attributeToToggle != null) {
+    // Nếu đang active, truyền giá trị null để loại bỏ thuộc tính đó (toggle off)
+    // Nếu không active, truyền chính thuộc tính đó để áp dụng (toggle on)
+    _quillController.formatSelection(isCurrentlyActive ? quill.Attribute.clone(attributeToToggle, null) : attributeToToggle);
+  }
+
+  // setState để cập nhật trạng thái nút ngay lập tức.
+  // Listener của controller cũng sẽ làm điều này, nhưng có thể có độ trễ nhỏ.
+  if (mounted) {
+    setState(() {});
+  }
+}
+
+  Widget _buildToolbarButton(IconData icon, VoidCallback onPressed, bool isDarkMode, {bool isToggled = false}) {
+    return Container(
+      margin: const EdgeInsets.all(2),
+      width: 36,
+      height: 36,
+      child: IconButton(
+        icon: Icon(
+          icon, 
+          size: 18,
+          color: isToggled 
+              ? (isDarkMode ? Colors.blue[300] : Colors.blue[600])
+              : (isDarkMode ? Colors.grey[300] : Colors.black87),
+        ),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        style: IconButton.styleFrom(
+          backgroundColor: isToggled 
+              ? (isDarkMode ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[100])
+              : Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          minimumSize: const Size(36, 36),
+          maximumSize: const Size(36, 36),
+        ),
       ),
     );
   }

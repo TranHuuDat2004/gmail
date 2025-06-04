@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 // Web specific imports - conditional import
 import 'dart:html' as html show document, AnchorElement;
 // Make sure these paths are correct for your project structure
@@ -51,17 +52,35 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     _currentUser = FirebaseAuth.instance.currentUser;
 
     // Initialize local star and read status based on current user and email data
-    if (_currentUser != null) {
-      final emailLabelsMap = widget.email['emailLabels'] as Map<String, dynamic>?;
-      final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
-      _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
-
-      final emailIsReadByMap = widget.email['emailIsReadBy'] as Map<String, dynamic>?;
-      _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
-    } else {
-      _isStarredLocally = false;
-      _isReadLocally = false; // Default if no user
+    // Trong initState() của EmailDetailScreen
+if (_currentUser != null) {
+  Map<String, dynamic>? emailLabelsMap;
+  if (widget.email['emailLabels'] != null) {
+    try {
+      // Cố gắng ép kiểu một cách an toàn
+      emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels']);
+    } catch (e) {
+      print("Error casting emailLabels: $e. Value: ${widget.email['emailLabels']}");
+      emailLabelsMap = null; // Hoặc xử lý mặc định
     }
+  }
+  final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
+  _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
+
+  Map<String, dynamic>? emailIsReadByMap;
+  if (widget.email['emailIsReadBy'] != null) {
+    try {
+      emailIsReadByMap = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
+    } catch (e) {
+      print("Error casting emailIsReadBy: $e. Value: ${widget.email['emailIsReadBy']}");
+      emailIsReadByMap = null; // Hoặc xử lý mặc định
+    }
+  }
+  _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
+} else {
+  _isStarredLocally = false;
+  _isReadLocally = false;
+}
 
     _fetchSenderDetailsForDetailScreen();
 
@@ -99,7 +118,6 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       });
     }
   }
-
   Future<void> _fetchSenderDetailsForDetailScreen() async {
     if (!mounted) return;
     setState(() {
@@ -107,15 +125,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     });
 
     String? senderId = widget.email['senderId'] as String?;
+    String? senderEmail = widget.email['senderEmail'] as String? ?? widget.email['from'] as String?;
     String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
-                                 widget.email['senderEmail'] as String? ??
-                                 widget.email['from'] as String? ??
+                                 senderEmail ??
                                  'Không rõ';
     String fallbackInitial = fallbackDisplayName.isNotEmpty && fallbackDisplayName != 'Không rõ'
                              ? fallbackDisplayName[0].toUpperCase()
                              : '?';
-    String? fallbackAvatarUrl = widget.email['senderAvatarUrl'] as String?;
 
+    // Try to fetch by senderId first
     if (senderId != null && senderId.isNotEmpty) {
       try {
         DocumentSnapshot senderDoc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
@@ -126,21 +144,48 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           _senderInitialLetterForDetail = (_fetchedSenderDisplayNameForDetail != null && _fetchedSenderDisplayNameForDetail!.isNotEmpty)
                                ? _fetchedSenderDisplayNameForDetail![0].toUpperCase()
                                : fallbackInitial;
+          if (mounted) {
+            setState(() {
+              _isLoadingSenderDetailsForDetail = false;
+            });
+          }
+          return;
+        }
+      } catch (e) {
+        print('Error fetching sender details by ID for EmailDetailScreen: $e');
+      }
+    }
+
+    // If senderId lookup failed, try by email
+    if (senderEmail != null && senderEmail.isNotEmpty) {
+      try {
+        QuerySnapshot userQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: senderEmail)
+            .limit(1)
+            .get();
+        
+        if (mounted && userQuery.docs.isNotEmpty) {
+          final data = userQuery.docs.first.data() as Map<String, dynamic>;
+          _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
+          _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
+          _senderInitialLetterForDetail = (_fetchedSenderDisplayNameForDetail != null && _fetchedSenderDisplayNameForDetail!.isNotEmpty)
+                               ? _fetchedSenderDisplayNameForDetail![0].toUpperCase()
+                               : fallbackInitial;
         } else {
           _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-          _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+          _fetchedSenderAvatarUrlForDetail = null;
           _senderInitialLetterForDetail = fallbackInitial;
         }
       } catch (e) {
-        print('Error fetching sender details for EmailDetailScreen (email ID ${widget.email['id']}, senderId $senderId): $e');
+        print('Error fetching sender details by email for EmailDetailScreen: $e');
         _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-        _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+        _fetchedSenderAvatarUrlForDetail = null;
         _senderInitialLetterForDetail = fallbackInitial;
       }
     } else {
-      print('No senderId found in email document (email ID ${widget.email['id']}). Using fallback display info.');
       _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-      _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
+      _fetchedSenderAvatarUrlForDetail = null;
       _senderInitialLetterForDetail = fallbackInitial;
     }
 
@@ -150,7 +195,6 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       });
     }
   }
-
   Future<void> _fetchRecipientAvatarForSentView() async {
     if (!mounted || widget.isSentView != true) return;
 
@@ -161,29 +205,29 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
 
     String? fetchedUrl;
-    final List<dynamic>? recipientIds = widget.email['recipientIds'] as List<dynamic>?;
+    final List<dynamic>? toRecipients = widget.email['toRecipients'] as List<dynamic>?;
 
-    if (recipientIds != null && recipientIds.isNotEmpty) {
-      final String firstRecipientId = recipientIds.first.toString();
+    if (toRecipients != null && toRecipients.isNotEmpty) {
+      final String firstRecipientEmail = toRecipients.first.toString();
       try {
-        print("EmailDetailScreen (Sent View): Fetching avatar for recipient ID: $firstRecipientId");
-        DocumentSnapshot recipientDoc = await FirebaseFirestore.instance
+        print("EmailDetailScreen (Sent View): Fetching avatar for recipient email: $firstRecipientEmail");
+        QuerySnapshot userQuery = await FirebaseFirestore.instance
             .collection('users')
-            .doc(firstRecipientId)
+            .where('email', isEqualTo: firstRecipientEmail)
+            .limit(1)
             .get();
         
-        if (recipientDoc.exists) {
-          final data = recipientDoc.data() as Map<String, dynamic>;
+        if (userQuery.docs.isNotEmpty) {
+          final data = userQuery.docs.first.data() as Map<String, dynamic>;
           fetchedUrl = data['avatarUrl'] as String?;
-          print("EmailDetailScreen (Sent View): Fetched recipient avatar URL: $fetchedUrl for ID: $firstRecipientId");
         } else {
-          print("EmailDetailScreen (Sent View): Recipient document not found for ID: $firstRecipientId");
+          print("EmailDetailScreen (Sent View): Recipient not found for email: $firstRecipientEmail");
         }
       } catch (e) {
-        print('Error fetching recipient avatar for ID $firstRecipientId: $e');
+        print('Error fetching recipient avatar for email $firstRecipientEmail: $e');
       }
     } else {
-      print("EmailDetailScreen (Sent View): No recipient IDs found in email data.");
+      print("EmailDetailScreen (Sent View): No recipient emails found in email data.");
     }
 
     if (mounted) {
@@ -247,15 +291,28 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           .doc(widget.email['id'])
           .update({'emailIsReadBy.${_currentUser!.uid}': newReadStatus});
 
-      if (mounted) {
-        setState(() {
-          _isReadLocally = newReadStatus;
-          widget.email['emailIsReadBy'] = {
-            ...widget.email['emailIsReadBy'] ?? {},
-            _currentUser!.uid: newReadStatus,
-          };
-        });
+      // ...
+if (mounted) {
+  setState(() {
+    _isReadLocally = newReadStatus;
+    // Đảm bảo kiểu dữ liệu khi cập nhật local email data
+    Map<String, dynamic> currentEmailIsReadBy = {};
+    if (widget.email['emailIsReadBy'] != null) {
+      try {
+        currentEmailIsReadBy = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
+      } catch (e) {
+        // Xử lý nếu không thể ép kiểu, có thể khởi tạo map rỗng
+        print("Warning: Could not cast widget.email['emailIsReadBy'] to Map<String, dynamic>");
       }
+    }
+    widget.email['emailIsReadBy'] = {
+      ...currentEmailIsReadBy, // Spread map đã được ép kiểu đúng
+      _currentUser!.uid: newReadStatus,
+    };
+    _emailDataWasUpdated = true; // Đặt cờ này ở đây sau khi cập nhật thành công
+  });
+}
+// 
     } catch (e) {
       print("Error updating read status: $e");
       if (mounted) {
@@ -576,22 +633,49 @@ Future<void> _deleteEmail() async {
     );
   }  @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_emailDataWasUpdated) {
-          Navigator.pop(context, widget.email); // Return the updated email data
-          return false; // Prevent default pop, as we've handled it
-        }
-        return true; // Allow default pop if no data was changed
-      },
-      child: _buildEmailDetailScaffold(context), // Original Scaffold UI moved to a new method
-    );
-  }
-
-  // This new method contains the entire Scaffold and its UI logic from your original build method
-  Widget _buildEmailDetailScaffold(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Get email content for display
+    String emailBodyToDisplay;
+    bool hasRichContent;
+    bool isBodyPlaceholder = false; // Flag for body placeholder
+
+    final rawSubject = widget.email['subject'] as String? ?? '';
+    final bool isSubjectEmpty = rawSubject.trim().isEmpty;
+    final String displaySubject = isSubjectEmpty ? '(Không có tiêu đề)' : rawSubject;
+
+    if (widget.email['bodyDeltaJson'] != null) {
+      try {
+        final deltaJson = jsonDecode(widget.email['bodyDeltaJson'] as String);
+        final quillDocument = quill.Document.fromJson(deltaJson);
+        emailBodyToDisplay = quillDocument.toPlainText().trim();
+        if (emailBodyToDisplay.isEmpty) {
+          emailBodyToDisplay = '(Không có nội dung)';
+          isBodyPlaceholder = true;
+          hasRichContent = false; // Treat placeholder as not rich for simple display
+        } else {
+          hasRichContent = true;
+        }
+      } catch (e) {
+        print("Error parsing rich content: $e");
+        String plainBody = widget.email['body'] as String? ?? '';
+        emailBodyToDisplay = plainBody.trim();
+        if (emailBodyToDisplay.isEmpty) {
+          emailBodyToDisplay = '(Không có nội dung)';
+          isBodyPlaceholder = true;
+        }
+        hasRichContent = false;
+      }
+    } else {
+      String plainBody = widget.email['body'] as String? ?? widget.email['bodyPlainText'] as String? ?? '';
+      emailBodyToDisplay = plainBody.trim();
+      if (emailBodyToDisplay.isEmpty) {
+        emailBodyToDisplay = '(Không có nội dung)';
+        isBodyPlaceholder = true;
+      }
+      hasRichContent = false;
+    }
 
     // Get email data
     final Map<String, dynamic> email = widget.email;
@@ -778,39 +862,42 @@ Future<void> _deleteEmail() async {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
+      body: SingleChildScrollView(
+        child: Column(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    email['subject'] ?? '(Không có tiêu đề)',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: subjectColor),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      displaySubject, // Use displaySubject here
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                        color: subjectColor,
+                        fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 20),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                CircleAvatar(
-                  backgroundColor: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
-                      ? Colors.transparent // Transparent if network image is shown
-                      : avatarBackgroundColor, // Background color for default asset or initials
-                  backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
-                      ? NetworkImage(senderAvatarUrlToShow)
-                      : const AssetImage('assets/images/default_avatar.png'), // Fallback to default asset
-                  child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
-                      // Show initials if network avatar is not available (displayed on top of default asset image)
+              children: [                CircleAvatar(
+                  backgroundColor: avatarBackgroundColor,
+                  backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow!.isNotEmpty)
+                      ? NetworkImage(senderAvatarUrlToShow!)
+                      : null,
+                  child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow!.isEmpty)
                       ? Text(
                           senderInitialToShow,
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor)
                         )
-                      : null, // No child if network image is successfully loaded
+                      : null,
                   radius: 22,
                 ),
                 const SizedBox(width: 12),
@@ -873,9 +960,22 @@ Future<void> _deleteEmail() async {
                 ),
               ),
             Divider(height: 32, color: dividerColor),
-            SelectableText( 
-              email['body'] ?? email['bodyContent'] ?? '(Không có nội dung)',
-              style: TextStyle(fontSize: 15, color: bodyTextColor, height: 1.5),
+            // Email body section
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 0),
+              child: (hasRichContent && !isBodyPlaceholder && widget.email['bodyDeltaJson'] != null)
+                  ? _buildRichEmailContent(widget.email['bodyDeltaJson'] as String, isDarkMode)
+                  : SelectableText(
+                      emailBodyToDisplay,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isBodyPlaceholder
+                            ? (isDarkMode ? Colors.grey[500] : Colors.grey[600]) // Lighter color for placeholder
+                            : (isDarkMode ? Colors.grey[200] : Colors.black87),
+                        height: 1.5,
+                        fontStyle: isBodyPlaceholder ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+                      ),
+                    ),
             ),
             if (attachments.isNotEmpty)
               Padding(
@@ -1005,28 +1105,29 @@ Future<void> _deleteEmail() async {
                 buttonBackgroundColor: actionButtonBackgroundColor,
                 buttonForegroundColor: actionButtonForegroundColor,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ActionButton(
-                icon: Icons.reply_all_outlined,
-                label: "Trả lời tất cả",
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ComposeEmailScreen(
-                        replyOrForwardEmail: widget.email,
-                        composeMode: 'replyAll',
+            ),            const SizedBox(width: 10),
+            if (_shouldShowReplyAll()) ...[
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.reply_all_outlined,
+                  label: "Trả lời tất cả",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ComposeEmailScreen(
+                          replyOrForwardEmail: widget.email,
+                          composeMode: 'replyAll',
+                        ),
                       ),
-                    ),
-                  );
-                },
-                buttonBackgroundColor: actionButtonBackgroundColor,
-                buttonForegroundColor: actionButtonForegroundColor,
+                    );
+                  },
+                  buttonBackgroundColor: actionButtonBackgroundColor,
+                  buttonForegroundColor: actionButtonForegroundColor,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: ActionButton(
                 icon: Icons.forward_outlined,
@@ -1050,6 +1151,54 @@ Future<void> _deleteEmail() async {
         ),
       ),
     );
+  }
+
+  Widget _buildRichEmailContent(String deltaJsonString, bool isDarkMode) {
+    try {
+      final deltaJson = jsonDecode(deltaJsonString);
+      final quillDocument = quill.Document.fromJson(deltaJson);
+      final quillController = quill.QuillController(
+        document: quillDocument,
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+
+      return Container(
+        constraints: const BoxConstraints(
+          minHeight: 100,
+        ),
+        child: quill.QuillEditor.basic(
+          configurations: quill.QuillEditorConfigurations(
+            controller: quillController,
+            autoFocus: false,
+            showCursor: false,
+            enableInteractiveSelection: true,
+            padding: EdgeInsets.zero,
+            customStyles: quill.DefaultStyles(
+              paragraph: quill.DefaultTextBlockStyle(
+                TextStyle(
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                  height: 1.5,
+                ),
+                const quill.VerticalSpacing(0, 8),
+                const quill.VerticalSpacing(0, 0),
+                null,
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Error rendering rich content: $e");
+      return SelectableText(
+        "Error loading rich content",
+        style: TextStyle(
+          fontSize: 16,
+          color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
   }
 
   IconData _getFileIcon(String fileName) {
@@ -1130,5 +1279,26 @@ Future<void> _deleteEmail() async {
       // If URL parsing fails, return a default name
       return 'attachment_${DateTime.now().millisecondsSinceEpoch}';
     }
+  }
+
+  bool _shouldShowReplyAll() {
+    // Không hiển thị nếu là Sent view
+    if (widget.isSentView == true) return false;
+    
+    final List<String> toRecipients = (widget.email['toRecipients'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+        
+    final List<String> ccRecipients = (widget.email['ccRecipients'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+    
+    // Tổng số người nhận (To + CC)
+    final int totalRecipients = toRecipients.length + ccRecipients.length;
+    
+    // Hiển thị nếu có nhiều hơn 1 người nhận
+    return totalRecipients > 1;
   }
 }

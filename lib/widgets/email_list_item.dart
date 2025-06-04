@@ -77,19 +77,14 @@ class _EmailListItemState extends State<EmailListItem> {
     });
 
     if (widget.isSentView) {
-      print("EmailListItem (Sent View): Processing email ID ${widget.email['id']}"); 
-      final List<dynamic>? recipientIdsDynamic = widget.email['recipientIds'] as List<dynamic>?;
-      print("EmailListItem (Sent View): Raw recipientIdsDynamic from email data: $recipientIdsDynamic"); 
+      final List<dynamic>? recipientIdsDynamic = widget.email['recipientIds'] as List<dynamic>?; 
 
       final List<String> recipientIds = recipientIdsDynamic?.map((e) => e.toString()).toList() ?? [];
-      print("EmailListItem (Sent View): Parsed recipientIds: $recipientIds"); 
 
       String recipientToDisplayId = '';
       if (recipientIds.isNotEmpty) {
         recipientToDisplayId = recipientIds.first;
-        print("EmailListItem (Sent View): Will attempt to fetch details for recipient ID: '$recipientToDisplayId'"); 
       } else {
-        print("EmailListItem (Sent View): No recipient IDs found in email data (widget.email['recipientIds'])."); 
       }
 
       String? recipientEmailForLookup;
@@ -105,9 +100,7 @@ class _EmailListItemState extends State<EmailListItem> {
           recipientNameFromData = firstRecipientData['name'] as String?; // If name is also in the map
         }
         if (recipientEmailForLookup != null) {
-            print("EmailListItem (Sent View): Found email in 'toRecipients': '$recipientEmailForLookup'");
             if (recipientNameFromData != null) {
-                 print("EmailListItem (Sent View): Found name in 'toRecipients' data: '$recipientNameFromData'");
             }
         } else {
             print("EmailListItem (Sent View): 'toRecipients' field found, but could not extract email from its first element: $firstRecipientData");
@@ -124,19 +117,16 @@ class _EmailListItemState extends State<EmailListItem> {
           : null;
 
       String fallbackRecipientName = recipientNameFromData ?? firstRecipientDisplayNameFromEmailField ?? recipientEmailForLookup ?? 'Unknown Recipient';
-      print("EmailListItem (Sent View): Fallback recipient name: '$fallbackRecipientName'"); 
       String fallbackRecipientInitial = fallbackRecipientName.isNotEmpty && fallbackRecipientName != 'Unknown Recipient'
                                        ? fallbackRecipientName[0].toUpperCase()
                                        : '?';
 
       if (recipientToDisplayId.isNotEmpty) {
         try {
-          print("EmailListItem (Sent View): Fetching user document from Firestore for ID: '$recipientToDisplayId'"); 
           DocumentSnapshot userDoc = await _firestore.collection('users').doc(recipientToDisplayId).get();
           if (mounted) { 
             if (userDoc.exists) {
               final data = userDoc.data() as Map<String, dynamic>;
-              print("EmailListItem (Sent View): Recipient user document found for ID '$recipientToDisplayId'. Data: $data"); 
               final String actualRecipientName = data['displayName'] as String? ?? fallbackRecipientName;
               _fetchedDisplayUserDisplayName = "Đến: $actualRecipientName";
               _fetchedDisplayUserAvatarUrl = data['avatarUrl'] as String?;
@@ -145,9 +135,7 @@ class _EmailListItemState extends State<EmailListItem> {
               } else {
                 _displayUserInitialLetter = fallbackRecipientInitial;
               }
-              print("EmailListItem (Sent View): Fetched display name: '$_fetchedDisplayUserDisplayName', Avatar URL: '${_fetchedDisplayUserAvatarUrl ?? 'None'}'"); 
             } else {
-              print("EmailListItem (Sent View): Recipient user document NOT found in Firestore for ID '$recipientToDisplayId'. Using fallback name: '$fallbackRecipientName'"); 
               _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
               _fetchedDisplayUserAvatarUrl = null;
               _displayUserInitialLetter = fallbackRecipientInitial;
@@ -162,7 +150,6 @@ class _EmailListItemState extends State<EmailListItem> {
           }
         }
       } else if (recipientEmailForLookup != null && recipientEmailForLookup.isNotEmpty) {
-        print("EmailListItem (Sent View): No recipient ID. Attempting to fetch by email: '$recipientEmailForLookup'");
         try {
           QuerySnapshot userQuery = await _firestore
               .collection('users')
@@ -174,7 +161,6 @@ class _EmailListItemState extends State<EmailListItem> {
             if (userQuery.docs.isNotEmpty) {
               DocumentSnapshot userDoc = userQuery.docs.first;
               final data = userDoc.data() as Map<String, dynamic>;
-              print("EmailListItem (Sent View): Recipient user document found by email '$recipientEmailForLookup'. Data: $data");
               // MODIFIED LINE: Prioritize displayName, then name, then fallback
               final String actualRecipientName = data['displayName'] as String? ?? data['name'] as String? ?? fallbackRecipientName;
               _fetchedDisplayUserDisplayName = "Đến: $actualRecipientName";
@@ -184,7 +170,6 @@ class _EmailListItemState extends State<EmailListItem> {
               } else {
                 _displayUserInitialLetter = fallbackRecipientInitial;
               }
-              print("EmailListItem (Sent View): Fetched (by email) display name: '$_fetchedDisplayUserDisplayName', Avatar URL: '${_fetchedDisplayUserAvatarUrl ?? 'None'}'");
             } else {
               print("EmailListItem (Sent View): Recipient user document NOT found by email '$recipientEmailForLookup'. Using fallback name: '$fallbackRecipientName'");
               _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
@@ -262,6 +247,7 @@ class _EmailListItemState extends State<EmailListItem> {
   Widget build(BuildContext context) {
     final email = widget.email;
     final theme = Theme.of(context); // Get the current theme
+    final isDarkMode = theme.brightness == Brightness.dark;
 
     String preliminaryDisplayName;
     if (widget.isSentView) {
@@ -283,6 +269,28 @@ class _EmailListItemState extends State<EmailListItem> {
     
     final String? avatarUrl = _isLoadingDisplayDetails ? null : _fetchedDisplayUserAvatarUrl;
     final String initialForAvatar = _isLoadingDisplayDetails ? '?' : _displayUserInitialLetter;
+    
+    final String rawSubject = widget.email["subject"] as String? ?? '';
+    final bool isSubjectEmpty = rawSubject.trim().isEmpty;
+    final String displaySubject = isSubjectEmpty
+        ? (widget.isSentView ? "(Không có tiêu đề)" : "(No Subject)")
+        : rawSubject;
+
+    final String rawBody = widget.email["body"] as String? ?? widget.email["bodyPlainText"] as String? ?? '';
+    final bool isBodyEmpty = rawBody.trim().isEmpty;
+    String displayBodyPreview = rawBody; // Default to rawBody
+    bool isBodyPlaceholder = false;
+
+    if (widget.isDetailedView) {
+      if (isBodyEmpty) {
+        displayBodyPreview = "(Không có nội dung)";
+        isBodyPlaceholder = true;
+      }
+    } else {
+      if (isBodyEmpty) {
+        displayBodyPreview = ''; // Keep it empty if not detailed view and body is empty
+      }
+    }
     
     return ListTile(
       leading: CircleAvatar(
@@ -306,9 +314,9 @@ class _EmailListItemState extends State<EmailListItem> {
         displayName, // Use the fetched or fallback display name
         style: TextStyle(
           fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
-          color: theme.brightness == Brightness.dark
-              ? (widget.isUnread ? Colors.grey[200] : Colors.grey[400]) // Lighter grays for dark mode title
-              : (widget.isUnread ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant),
+          color: widget.isUnread 
+              ? (isDarkMode ? theme.colorScheme.onSurface : theme.colorScheme.primary) 
+              : (isDarkMode ? Colors.grey[400] : Colors.black54),
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -316,46 +324,43 @@ class _EmailListItemState extends State<EmailListItem> {
       subtitle: widget.isDetailedView
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  email["subject"] ?? '(No Subject)',
+                  displaySubject, // Use the potentially placeholder subject
+                  style: TextStyle(
+                    fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+                    color: widget.isUnread
+                        ? (isDarkMode ? Colors.grey[300] : Colors.black87)
+                        : (isDarkMode ? Colors.grey[500] : Colors.grey[700]),
+                    fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
-                    color: theme.brightness == Brightness.dark
-                        ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
-                        : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
-                  ),
                 ),
-                if (email["body"] != null && (email["body"] as String).trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2.0),
-                    child: Text(
-                      email["body"],
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: theme.brightness == Brightness.dark
-                            ? Colors.grey[600]
-                            : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
-                      ),
+                if (displayBodyPreview.isNotEmpty || isBodyPlaceholder) // Show body preview if it has content or is a placeholder
+                  Text(
+                    displayBodyPreview,
+                    style: TextStyle(
+                      color: isBodyPlaceholder 
+                          ? (isDarkMode ? Colors.grey[600] : Colors.grey[500]) // Lighter for placeholder
+                          : (isDarkMode ? Colors.grey[500] : Colors.grey[700]),
+                      fontStyle: isBodyPlaceholder ? FontStyle.italic : FontStyle.normal,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
               ],
             )
-          : Text(
-              email["subject"] ?? '(No Subject)',
+          : Text( // For non-detailed view, only show subject
+              displaySubject,
+              style: TextStyle(
+                color: widget.isUnread
+                    ? (isDarkMode ? Colors.grey[400] : Colors.black54)
+                    : (isDarkMode ? Colors.grey[500] : Colors.grey[700]),
+                fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: widget.isUnread ? FontWeight.w500 : FontWeight.normal,
-                color: theme.brightness == Brightness.dark
-                    ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
-                    : (widget.isUnread ? theme.colorScheme.onSurface.withOpacity(0.85) : theme.colorScheme.onSurfaceVariant.withOpacity(0.7)),
-              ),
             ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,

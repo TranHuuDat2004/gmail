@@ -523,44 +523,82 @@ class _GmailUIState extends State<GmailUI> {
                               if (currentUser != null && (email['isUnread'] ?? true) && selectedLabel != "Drafts") {
                                 try {
                                   await _firestore.collection('emails').doc(email['id']).update({
-                                    'emailIsReadBy.${currentUser.uid}': true,
-                                  });
+        'emailIsReadBy.${currentUser.uid}': true,
+      });
                                   if (mounted) {
-                                    setState(() {
-                                      email['isUnread'] = false;
-                                      final emailIndex = _emails.indexWhere((e) => e['id'] == email['id']);
-                                      if (emailIndex != -1) {
-                                        _emails[emailIndex]['isUnread'] = false;
-                                        _emails[emailIndex]['emailIsReadBy'] =
-                                            Map<String, dynamic>.from(_emails[emailIndex]['emailIsReadBy'] ?? {})
-                                              ..[currentUser.uid] = true;
-                                      }
-                                    });
-                                  }
-                                } catch (e) {
-                                  print("Error marking email as read: $e");
+        setState(() {
+          email['isUnread'] = false; // Cập nhật trực tiếp email này
+          // Cập nhật cả map emailIsReadBy trong email này để đồng bộ
+          Map<String, dynamic> currentEmailIsReadBy = {};
+          if (email['emailIsReadBy'] != null) {
+            try {
+              currentEmailIsReadBy = Map<String, dynamic>.from(email['emailIsReadBy']);
+            } catch (e) {
+              print("Warning: Could not cast email['emailIsReadBy'] to Map<String, dynamic> during initial read marking.");
+            }
+          }
+          email['emailIsReadBy'] = {
+            ...currentEmailIsReadBy,
+            currentUser.uid: true,
+          };
+        });
+      }
+    } catch (e) {
+      print("Error marking email as read on tap: $e");
                                 }
                               }
                               // Navigate to EmailDetailScreen and wait for result
                               final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => EmailDetailScreen(
-                                    email: email,
-                                    isSentView: selectedLabel == "Sent", // Pass isSentView based on current selected label
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => EmailDetailScreen(
+                                      // Truyền một BẢN SAO của email để EmailDetailScreen có thể sửa đổi
+                                      // mà không ảnh hưởng trực tiếp đến đối tượng trong _emails cho đến khi pop
+                                      email: Map<String, dynamic>.from(email), // <<<< QUAN TRỌNG: TRUYỀN BẢN SAO
+                                      isSentView: selectedLabel == "Sent",
+                                    ),
                                   ),
-                                ),
-                              );
-                              // If result is a Map (email was updated in detail screen), refresh the list
-                              if (result is Map) {
-                                if (mounted) {
-                                  _fetchEmails(); // Reload the entire list
-                                }
-                              } else if (result == true && selectedLabel == "Drafts" && mounted) {
-                                // This handles a specific case for drafts, e.g. if a draft was sent
-                                _fetchEmails();
-                              }
-                            },
+                                );
+                                                            // If result is a Map (email was updated in detail screen), refresh the list
+                              if (result is Map<String, dynamic>) {
+    final updatedEmailFromResult = result; // Đây là email đã được cập nhật từ EmailDetailScreen
+    if (mounted) {
+      setState(() {
+        final emailIndex = _emails.indexWhere((e) => e['id'] == updatedEmailFromResult['id']);
+        if (emailIndex != -1) {
+          // Cập nhật email trong danh sách _emails bằng dữ liệu mới từ EmailDetailScreen
+          _emails[emailIndex] = updatedEmailFromResult;
+
+          // QUAN TRỌNG: Tính toán lại 'isUnread' cho item này dựa trên dữ liệu vừa nhận được
+          Map<String, dynamic>? emailIsReadByMapFromResult;
+          if (updatedEmailFromResult['emailIsReadBy'] != null) {
+            try {
+              emailIsReadByMapFromResult = Map<String, dynamic>.from(updatedEmailFromResult['emailIsReadBy']);
+            } catch (e) {
+              print("Error casting emailIsReadBy from pop result: $e");
+            }
+          }
+
+          bool newIsUnreadStatus = true; // Mặc định là chưa đọc
+          if (currentUser != null && emailIsReadByMapFromResult != null && emailIsReadByMapFromResult[currentUser.uid] == true) {
+            newIsUnreadStatus = false; // Nếu đã đọc bởi user này -> false
+          }
+          // Gán lại trạng thái isUnread cho email trong danh sách _emails
+          _emails[emailIndex]['isUnread'] = newIsUnreadStatus;
+
+        } else {
+          // Email không tìm thấy, có thể cần fetch lại (hiếm khi xảy ra nếu ID không đổi)
+           _fetchEmails(); // Hoặc xử lý khác tùy logic của bạn
+        }
+      });
+    }
+  } else if (result == true && selectedLabel == "Drafts" && mounted) {
+    // Xử lý riêng cho trường hợp draft (ví dụ: draft đã được gửi và xóa)
+    _fetchEmails();
+  }
+  // Không cần else, nếu result không phải là Map hoặc true cho drafts, không làm gì cả
+},
+
                             onStarPressed: (bool newStarState) async {
                               final currentUser = _auth.currentUser;
                               if (currentUser == null) return;
