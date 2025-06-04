@@ -269,39 +269,47 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
   }
 
-  Future<void> _deleteEmail() async {
-    if (_currentUser == null || widget.email['id'] == null) return;
-    final theme = Theme.of(context);
+Future<void> _deleteEmail() async {
+  if (_currentUser == null || widget.email['id'] == null) {
+    print("No authenticated user or invalid email ID");
+    return;
+  }
+  final theme = Theme.of(context);
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('emails')
-          .doc(widget.email['id'])
-          .update({
-        'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
-      });
+  try {
+    final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
+    final doc = await docRef.get();
+    if (!doc.exists) {
+      print("Document does not exist");
+      return;
+    }
+    print("Document data: ${doc.data()}");
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Email đã được chuyển vào thùng rác'),
-            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      print("Error deleting email: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi xóa email: $e'),
-            backgroundColor: theme.colorScheme.error,
-          ),
-        );
-      }
+    await docRef.update({
+      'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Email đã được chuyển vào thùng rác'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+        ),
+      );
+      Navigator.pop(context);
+    }
+  } catch (e) {
+    print("Error deleting email: $e");
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi xóa email: $e'),
+          backgroundColor: theme.colorScheme.error,
+        ),
+      );
     }
   }
+}
 
   void _assignLabels() {
     final theme = Theme.of(context);

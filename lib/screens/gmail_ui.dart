@@ -47,124 +47,176 @@ class _GmailUIState extends State<GmailUI> {
   }
 
   Future<void> _fetchEmails() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingEmails = true;
-    });
+  if (!mounted) return;
+  setState(() {
+    _isLoadingEmails = true;
+  });
 
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      if (mounted) {
-        setState(() {
-          _emails = [];
-          _isLoadingEmails = false;
-        });
+  final currentUser = _auth.currentUser;
+  if (currentUser == null) {
+    if (mounted) {
+      setState(() {
+        _emails = [];
+        _isLoadingEmails = false;
+      });
+    }
+    return;
+  }
+
+  try {
+    List<Map<String, dynamic>> emailsToDisplay = [];
+
+    if (selectedLabel == "Drafts") {
+      final draftsSnapshot = await _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('drafts')
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      emailsToDisplay = draftsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        data['isUnread'] = true;
+        data['starred'] = false;
+        data['isDraft'] = true;
+        data['subject'] = data['subject'] ?? 'No Subject';
+        data['body'] = data['body'] ?? '';
+        data['emailLabels'] = {currentUser.uid: ['Drafts']};
+        data['emailIsReadBy'] = {currentUser.uid: false};
+        data['from'] = currentUser.email;
+        data['toRecipients'] = data['toRecipients'] ?? [];
+        return data;
+      }).toList();
+    } else if (selectedLabel == "Trash") {
+      Query query = _firestore.collection('emails');
+      query = query.where('involvedUserIds', arrayContains: currentUser.uid);
+      query = query.orderBy('timestamp', descending: true);
+
+      final snapshot = await query.get();
+
+      emailsToDisplay = snapshot.docs
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            data['id'] = doc.id;
+            return data;
+          })
+          .where((data) {
+            // Lọc phía client: chỉ giữ email có isTrashedBy chứa currentUser.uid
+            final isTrashedBy = List<String>.from(data['isTrashedBy'] ?? []);
+            return isTrashedBy.contains(currentUser.uid);
+          })
+          .map((data) {
+            final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
+            bool isUnread = true;
+            if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
+              isUnread = false;
+            }
+            data['isUnread'] = isUnread;
+
+            final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
+            bool isStarred = false;
+            if (emailLabelsMap != null &&
+                emailLabelsMap[currentUser.uid] is List &&
+                (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
+              isStarred = true;
+            }
+            data['starred'] = isStarred;
+
+            bool isDraft = false;
+            if (emailLabelsMap != null &&
+                emailLabelsMap[currentUser.uid] is List &&
+                (emailLabelsMap[currentUser.uid] as List).contains('Drafts')) {
+              isDraft = true;
+            }
+            data['isDraft'] = isDraft;
+
+            return data;
+          })
+          .toList();
+    } else {
+      Query query = _firestore.collection('emails');
+      query = query.where('involvedUserIds', arrayContains: currentUser.uid);
+      query = query.orderBy('timestamp', descending: true);
+
+      final snapshot = await query.get();
+
+      final allUserEmails = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+
+        final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
+        bool isUnread = true;
+        if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
+          isUnread = false;
+        }
+        data['isUnread'] = isUnread;
+
+        final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
+        bool isStarred = false;
+        if (emailLabelsMap != null &&
+            emailLabelsMap[currentUser.uid] is List &&
+            (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
+          isStarred = true;
+        }
+        data['starred'] = isStarred;
+
+        bool isDraft = false;
+        if (emailLabelsMap != null &&
+            emailLabelsMap[currentUser.uid] is List &&
+            (emailLabelsMap[currentUser.uid] as List).contains('Drafts')) {
+          isDraft = true;
+        }
+        data['isDraft'] = isDraft;
+
+        return data;
+      }).toList();
+
+      // Lọc bỏ các email có isTrashedBy chứa currentUser.uid
+      final filteredEmails = allUserEmails.where((data) {
+        final isTrashedBy = List<String>.from(data['isTrashedBy'] ?? []);
+        return !isTrashedBy.contains(currentUser.uid);
+      }).toList();
+
+      if (selectedLabel == "All inboxes") {
+        emailsToDisplay = filteredEmails;
+      } else if (selectedLabel == "Starred") {
+        emailsToDisplay = filteredEmails.where((email) => email['starred'] == true).toList();
+      } else {
+        emailsToDisplay = filteredEmails.where((email) {
+          final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
+          if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
+            final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
+            return userSpecificLabels.contains(selectedLabel);
+          }
+          return false;
+        }).toList();
       }
-      return;
     }
 
-    try {
-      List<Map<String, dynamic>> emailsToDisplay = [];
-
-      if (selectedLabel == "Drafts") {
-        final draftsSnapshot = await _firestore
-            .collection('users')
-            .doc(currentUser.uid)
-            .collection('drafts')
-            .orderBy('timestamp', descending: true)
-            .get();
-
-        emailsToDisplay = draftsSnapshot.docs.map((doc) {
-          final data = doc.data();
-          data['id'] = doc.id;
-          data['isUnread'] = true;
-          data['starred'] = false;
-          data['isDraft'] = true;
-          data['subject'] = data['subject'] ?? 'No Subject';
-          data['body'] = data['body'] ?? '';
-          data['emailLabels'] = {currentUser.uid: ['Drafts']};
-          data['emailIsReadBy'] = {currentUser.uid: false};
-          data['from'] = currentUser.email;
-          data['toRecipients'] = data['toRecipients'] ?? [];
-          return data;
-        }).toList();
-      } else {
-        Query query = _firestore.collection('emails');
-        query = query.where('involvedUserIds', arrayContains: currentUser.uid);
-        query = query.orderBy('timestamp', descending: true);
-
-        final snapshot = await query.get();
-
-        final allUserEmails = snapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          data['id'] = doc.id;
-
-          final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
-          bool isUnread = true;
-          if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
-            isUnread = false;
-          }
-          data['isUnread'] = isUnread;
-
-          final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
-          bool isStarred = false;
-          if (emailLabelsMap != null &&
-              emailLabelsMap[currentUser.uid] is List &&
-              (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
-            isStarred = true;
-          }
-          data['starred'] = isStarred;
-
-          bool isDraft = false;
-          if (emailLabelsMap != null &&
-              emailLabelsMap[currentUser.uid] is List &&
-              (emailLabelsMap[currentUser.uid] as List).contains('Drafts')) {
-            isDraft = true;
-          }
-          data['isDraft'] = isDraft;
-
-          return data;
-        }).toList();
-
-        if (selectedLabel == "All inboxes") {
-          emailsToDisplay = allUserEmails;
-        } else if (selectedLabel == "Starred") {
-          emailsToDisplay = allUserEmails.where((email) => email['starred'] == true).toList();
-        } else {
-          emailsToDisplay = allUserEmails.where((email) {
-            final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
-            if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
-              final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
-              return userSpecificLabels.contains(selectedLabel);
-            }
-            return false;
-          }).toList();
+    if (mounted) {
+      setState(() {
+        _emails = emailsToDisplay;
+        _isLoadingEmails = false;
+      });
+    }
+  } catch (e) {
+    print("Error fetching emails: $e");
+    if (mounted) {
+      setState(() {
+        _isLoadingEmails = false;
+        _emails = [];
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error fetching emails: $e')),
+          );
         }
-      }
-
-      if (mounted) {
-        setState(() {
-          _emails = emailsToDisplay;
-          _isLoadingEmails = false;
-        });
-      }
-    } catch (e) {
-      print("Error fetching emails: $e");
-      if (mounted) {
-        setState(() {
-          _isLoadingEmails = false;
-          _emails = [];
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error fetching emails: $e')),
-            );
-          }
-        });
-      }
+      });
     }
   }
+}
 
   Future<void> _loadCurrentUserAvatar({bool forceRefresh = false}) async {
     final User? currentUser = FirebaseAuth.instance.currentUser;
