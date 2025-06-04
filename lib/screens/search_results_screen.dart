@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // ADDED IMPORT
+import 'package:firebase_auth/firebase_auth.dart';
 import 'email_detail_screen.dart';
 import '../widgets/email_list_item.dart'; 
 
@@ -38,20 +38,24 @@ class SearchResultsScreen extends StatelessWidget {
                 // Determine if the email is a "sent" item
                 final currentUser = FirebaseAuth.instance.currentUser;
                 final bool isActuallySentItem = currentUser != null && email['senderId'] == currentUser.uid;
-
+                
                 return EmailListItem(
                   email: email,
                   isDetailedView: true, 
                   isUnread: isUnread,
-                  isSentView: isActuallySentItem, // ADDED THIS LINE
+                  isSentView: isActuallySentItem,
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => EmailDetailScreen(email: email)),
+                      MaterialPageRoute(
+                        builder: (context) => EmailDetailScreen(
+                          email: email,
+                          isSentView: isActuallySentItem,
+                        ),
+                      ),
                     );
                   },
                   onStarPressed: (bool newStarState) {
-                    // This is a placeholder. In a real app, you'd update your data source.
                     print("Email ${email['id']} starred: $newStarState from search results");
                   },
                 );

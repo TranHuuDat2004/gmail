@@ -1,5 +1,7 @@
 // lib/screens/compose_email_screen.dart
 import 'dart:io'; // For File
+import 'dart:typed_data'; // For Uint8List (web bytes)
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart'; // Bạn có thể dùng một trong hai hoặc cả hai
@@ -30,9 +32,9 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _subjectController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
-
   bool _showCcBcc = false;
   List<File> _attachments = []; // Sử dụng List<File> cho cả image_picker và file_picker
+  Map<String, Uint8List> _webAttachmentData = {}; // Store file bytes for web
   final ImagePicker _imagePicker = ImagePicker(); // Đổi tên để tránh nhầm lẫn nếu dùng cả hai
 
   bool _isSending = false;
@@ -58,14 +60,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
   void _populateFieldsForReplyForward() {
     final email = widget.replyOrForwardEmail!;
-    String originalSender = email['sender'] ?? '';
+    String originalSender = email['senderEmail'] ?? email['from'] ?? '';
     String originalSubject = email['subject'] ?? '';
-    String originalBody = email['body'] ?? email['preview'] ?? '';
+    String originalBody = email['body'] ?? email['bodyContent'] ?? '';
 
     String quotedBody =
         "\n\n\n-------- ${widget.composeMode == 'forward' ? 'Forwarded Message' : 'Original Message'} --------\n"
         "From: $originalSender\n"
-        "Date: ${email['time'] ?? 'Unknown date'}\n"
+        "Date: ${email['timestamp'] != null ? email['timestamp'].toString() : 'Unknown date'}\n"
         "Subject: $originalSubject\n"
         "\n$originalBody";
 
@@ -78,7 +80,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       _bodyController.text = quotedBody;
     } else if (widget.composeMode == 'replyAll') {
       _toController.text = originalSender;
-      // TODO: Thêm logic để lấy danh sách CC gốc và điền vào _ccController
       List<String> originalCc = List<String>.from(email['ccRecipients'] ?? []);
       _ccController.text = originalCc.join(', ');
       _subjectController.text =
@@ -92,39 +93,122 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               ? originalSubject
               : "Fwd: $originalSubject";
       _bodyController.text = quotedBody;
-      // TODO: Xử lý việc đính kèm lại các file từ email gốc nếu cần (phức tạp hơn)
-      // List<String> originalAttachmentUrls = List<String>.from(email['attachments'] ?? []);
-      // // Bạn cần logic để tải các file này về rồi thêm vào _attachments,
-      // // hoặc chỉ hiển thị link nếu là forward.
     }
     _bodyController.selection =
         TextSelection.fromPosition(const TextPosition(offset: 0));
-  }
-
-  Future<void> _pickAttachments() async {
+  }  Future<void> _pickAttachments() async {
     if (!mounted) return;
+    final theme = Theme.of(context);
+    
+    // Gmail-like restrictions
+    const int maxFiles = 25; // Gmail limit
+    const int maxFileSizeMB = 25; // Gmail limit per file
+    const int maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
+    
+    if (_attachments.length >= maxFiles) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Chỉ có thể đính kèm tối đa $maxFiles tệp'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange[800],
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: [
+          // Documents
+          'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf',
+          // Images
+          'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+          // Videos
+          'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm',
+          // Audio
+          'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a',
+          // Archives
+          'zip', 'rar', '7z', 'tar', 'gz',
+          // Other
+          'csv', 'json', 'xml', 'html', 'css', 'js'
+        ],
+        withData: kIsWeb,
       );
 
       if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          _attachments.addAll(result.paths.map((path) => File(path!)).toList());
-        });
-      } else {
-        // User canceled the picker or no files selected
-        if (mounted) { // MODIFIED
+        List<String> errors = [];
+        int filesAdded = 0;
+        
+        for (var file in result.files) {
+          // Check if we've reached the limit
+          if (_attachments.length + filesAdded >= maxFiles) {
+            errors.add('Đã đạt giới hạn $maxFiles tệp');
+            break;
+          }
+          
+          // Check file size
+          int fileSize = kIsWeb ? (file.bytes?.length ?? 0) : (file.size);
+          if (fileSize > maxFileSizeBytes) {
+            errors.add('${file.name}: Quá ${maxFileSizeMB}MB');
+            continue;
+          }
+          
+          // Check for duplicates
+          bool isDuplicate = _attachments.any((existingFile) => 
+            (kIsWeb ? existingFile.path : existingFile.path.split('/').last) == file.name
+          );
+          if (isDuplicate) {
+            errors.add('${file.name}: Đã tồn tại');
+            continue;
+          }
+          
+          // Add file
+          if (kIsWeb) {
+            if (file.bytes != null) {
+              final tempFile = File(file.name);
+              _attachments.add(tempFile);
+              _webAttachmentData[file.name] = file.bytes!;
+              filesAdded++;
+            }
+          } else {
+            if (file.path != null) {
+              _attachments.add(File(file.path!));
+              filesAdded++;
+            }
+          }
+        }
+        
+        setState(() {});
+        
+        if (errors.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No files selected.')),
+            SnackBar(
+              content: Text('Một số tệp không thể thêm:\n${errors.join('\n')}'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange[800],
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        } else if (filesAdded > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã thêm $filesAdded tệp đính kèm'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
     } catch (e) {
-      if (mounted) { // MODIFIED
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking files: $e')),
+          SnackBar(
+            content: Text('Lỗi chọn tệp: $e'),
+            backgroundColor: theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -132,30 +216,40 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
   Future<void> _sendEmailAndSaveToFirestore() async {
     if (!mounted) return;
+    final theme = Theme.of(context); // Get theme for SnackBar & Dialog
 
     if (_toController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter at least one recipient.')), // MODIFIED
+        SnackBar(
+          content: const Text('Please enter at least one recipient.'), // MODIFIED
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange[800],
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
     if (_subjectController.text.trim().isEmpty) {
       final sendAnyway = await showDialog<bool>(
         context: context, // MODIFIED
-        builder: (dialogContext) => AlertDialog( // MODIFIED
-          title: const Text('Send without subject?'),
-          content: const Text('The subject is empty. Send the email anyway?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('CANCEL'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('SEND'),
-            ),
-          ],
-        ),
+        builder: (dialogContext) {
+          final dialogTheme = Theme.of(dialogContext);
+          final isDialogDark = dialogTheme.brightness == Brightness.dark;
+          return AlertDialog( // MODIFIED
+            backgroundColor: isDialogDark ? const Color(0xFF2C2C2C) : Colors.white,
+            title: Text('Send without subject?', style: TextStyle(color: isDialogDark ? Colors.grey[200] : Colors.black87)),
+            content: Text('The subject is empty. Send the email anyway?', style: TextStyle(color: isDialogDark ? Colors.grey[400] : Colors.black54)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text('CANCEL', style: TextStyle(color: isDialogDark ? Colors.blue[300] : Colors.blue[700])),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('SEND', style: TextStyle(color: isDialogDark ? Colors.blue[300] : Colors.blue[700])),
+              ),
+            ],
+          );
+        }
       );
       if (sendAnyway != true) return;
     }
@@ -171,39 +265,48 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       if (userId == null) { // MODIFIED
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User not logged in. Cannot send email.')),
+            SnackBar(
+              content: const Text('User not logged in. Cannot send email.'),
+              backgroundColor: theme.colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
-          // No need to set _isSending to false here, finally block will handle it.
         }
-        // Ensure finally block still runs to set _isSending = false
-        // by not returning from inside the try if possible, or rethrow to be caught by outer catch.
-        // However, for this specific case, returning is fine as `finally` will execute.
-        // The `setState` for `_isSending` should be in `finally` or after this check.
-        // Let's adjust: move `setState` for `_isSending` to be conditional or in finally.
-        // For now, this return is fine, `finally` will execute.
         return; 
-      }
-
-      List<String> attachmentUrls = [];
+      }      List<String> attachmentUrls = [];
       if (_attachments.isNotEmpty) {
-        for (File file in _attachments) {
-          String fileName = file.path.split('/').last; // Declare fileName here
+        for (int i = 0; i < _attachments.length; i++) {
+          File file = _attachments[i];
+          String fileName = file.path.split('/').last.split('\\').last; // Handle both / and \ separators
           try {
             Reference ref = FirebaseStorage.instance
                 .ref()
                 .child('email_attachments')
                 .child(docRef.id) 
                 .child(fileName);
-            UploadTask uploadTask = ref.putFile(file);
+            
+            UploadTask uploadTask;
+            if (kIsWeb && _webAttachmentData.containsKey(fileName)) {
+              // For web, use bytes data
+              uploadTask = ref.putData(_webAttachmentData[fileName]!);
+            } else {
+              // For mobile, use file
+              uploadTask = ref.putFile(file);
+            }
+            
             TaskSnapshot snapshot = await uploadTask;
             String downloadUrl = await snapshot.ref.getDownloadURL();
             attachmentUrls.add(downloadUrl);
           } catch (e) {
             print('Error uploading attachment ${file.path}: $e');
             if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to upload attachment: $fileName. Email will be sent without it.')),
-                );
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi tải lên tệp $fileName: $e'),
+                  backgroundColor: theme.colorScheme.error,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
             }
           }
         }
@@ -229,12 +332,10 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         involvedUserIds.add(currentSenderId);
       }
       emailLabels[currentSenderId] = ['Sent'];
-      emailIsReadBy[currentSenderId] = true; // Sent mail is initially marked as read for the sender.
-
-      // 2. Handle Recipients (including sender if they are a recipient)
-      Set<String> allUniqueRecipientEmails = {...toRecipients, ...ccRecipients, ...bccRecipients}.toSet();
-
-      for (String recipientEmail in allUniqueRecipientEmails) {
+      emailIsReadBy[currentSenderId] = true; // Sent mail is initially marked as read for the sender.      // 2. Handle Recipients (TO, CC, BCC separately to ensure all get proper labels)
+      
+      // Process TO recipients
+      for (String recipientEmail in toRecipients) {
         if (recipientEmail.isEmpty) continue;
 
         try {
@@ -251,25 +352,90 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               involvedUserIds.add(recipientId);
             }
 
-            // Add 'Inbox' label for this recipient
+            // Add 'Inbox' label for TO recipients
             List<String> currentLabels = emailLabels[recipientId] ?? [];
             if (!currentLabels.contains('Inbox')) {
               currentLabels.add('Inbox');
             }
-            emailLabels[recipientId] = currentLabels.toSet().toList(); // Ensure unique labels
-
-            // Emails appearing in an 'Inbox' should be marked as unread for that recipient.
-            // This will override the sender's 'isRead = true' if they send to themselves.
+            emailLabels[recipientId] = currentLabels.toSet().toList();
             emailIsReadBy[recipientId] = false;
+            
+            print('✅ TO recipient processed: $recipientEmail -> $recipientId with Inbox label');
           } else {
-            print('Recipient email $recipientEmail not found in users collection.');
-            // Note: Emails to external users won't have an 'Inbox' label for them in this system
-            // and their recipientId won't be added to involvedUserIds unless they are also users of this app.
-            // The email will still contain their email address in toRecipients/ccRecipients/bccRecipients.
+            print('❌ TO recipient email $recipientEmail not found in users collection.');
           }
         } catch (e) {
-          print('Error fetching recipient UID for $recipientEmail or processing labels: $e');
-          // Consider if this error should halt sending or just skip this recipient's special handling.
+          print('❌ Error fetching TO recipient UID for $recipientEmail: $e');
+        }
+      }
+      
+      // Process CC recipients
+      for (String recipientEmail in ccRecipients) {
+        if (recipientEmail.isEmpty) continue;
+
+        try {
+          var userQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: recipientEmail)
+              .limit(1)
+              .get();
+
+          if (userQuery.docs.isNotEmpty) {
+            String recipientId = userQuery.docs.first.id;
+
+            if (!involvedUserIds.contains(recipientId)) {
+              involvedUserIds.add(recipientId);
+            }
+
+            // Add 'Inbox' label for CC recipients
+            List<String> currentLabels = emailLabels[recipientId] ?? [];
+            if (!currentLabels.contains('Inbox')) {
+              currentLabels.add('Inbox');
+            }
+            emailLabels[recipientId] = currentLabels.toSet().toList();
+            emailIsReadBy[recipientId] = false;
+            
+            print('✅ CC recipient processed: $recipientEmail -> $recipientId with Inbox label');
+          } else {
+            print('❌ CC recipient email $recipientEmail not found in users collection.');
+          }
+        } catch (e) {
+          print('❌ Error fetching CC recipient UID for $recipientEmail: $e');
+        }
+      }
+      
+      // Process BCC recipients
+      for (String recipientEmail in bccRecipients) {
+        if (recipientEmail.isEmpty) continue;
+
+        try {
+          var userQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: recipientEmail)
+              .limit(1)
+              .get();
+
+          if (userQuery.docs.isNotEmpty) {
+            String recipientId = userQuery.docs.first.id;
+
+            if (!involvedUserIds.contains(recipientId)) {
+              involvedUserIds.add(recipientId);
+            }
+
+            // Add 'Inbox' label for BCC recipients
+            List<String> currentLabels = emailLabels[recipientId] ?? [];
+            if (!currentLabels.contains('Inbox')) {
+              currentLabels.add('Inbox');
+            }
+            emailLabels[recipientId] = currentLabels.toSet().toList();
+            emailIsReadBy[recipientId] = false;
+            
+            print('✅ BCC recipient processed: $recipientEmail -> $recipientId with Inbox label');
+          } else {
+            print('❌ BCC recipient email $recipientEmail not found in users collection.');
+          }
+        } catch (e) {
+          print('❌ Error fetching BCC recipient UID for $recipientEmail: $e');
         }
       }
       
@@ -293,14 +459,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
       if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email sent successfully!')),
+          SnackBar(
+            content: const Text('Email sent successfully!'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
        if(mounted) { // MODIFIED
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to send email: $e')),
+            SnackBar(
+              content: Text('Failed to send email: $e'),
+              backgroundColor: theme.colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
     } finally {
@@ -312,6 +486,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
   Future<void> _saveDraft() async {
     if (!mounted) return;
+    final theme = Theme.of(context); // Get theme for SnackBar
     if (_bodyController.text.trim().isEmpty && _subjectController.text.trim().isEmpty && _toController.text.trim().isEmpty && _attachments.isEmpty) {
       Navigator.pop(context); // Nothing to save
       return;
@@ -339,14 +514,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
       if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Draft saved.')),
+          SnackBar(
+            content: const Text('Draft saved.'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.grey[700] : Colors.black87,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
       if(mounted) { // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save draft: $e')),
+          SnackBar(
+            content: Text('Failed to save draft: $e'),
+            backgroundColor: theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -360,19 +543,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         showDialog( // MODIFIED
           context: context,
           builder: (BuildContext dialogContext) {
+            final dialogTheme = Theme.of(dialogContext);
+            final isDialogDark = dialogTheme.brightness == Brightness.dark;
             return AlertDialog(
-              title: const Text('Discard email?'),
-              content: const Text('Are you sure you want to discard this email and lose your changes?'),
+              backgroundColor: isDialogDark ? const Color(0xFF2C2C2C) : Colors.white,
+              title: Text('Discard email?', style: TextStyle(color: isDialogDark ? Colors.grey[200] : Colors.black87)),
+              content: Text('Are you sure you want to discard this email and lose your changes?', style: TextStyle(color: isDialogDark ? Colors.grey[400] : Colors.black54)),
               actions: <Widget>[
                 TextButton(
-                  child: const Text('CANCEL'),
+                  child: Text('CANCEL', style: TextStyle(color: isDialogDark ? Colors.blue[300] : Colors.blue[700])),
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
                   },
                 ),
                 TextButton(
-                  child: const Text('DISCARD'),
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: Text('DISCARD', style: TextStyle(color: isDialogDark ? Colors.red[300] : Colors.red[700])),
+                  style: TextButton.styleFrom(foregroundColor: isDialogDark ? Colors.red[300] : Colors.red[700]), // Ensure foreground color is also themed
                   onPressed: () {
                     Navigator.of(dialogContext).pop(); 
                     Navigator.of(context).pop(); 
@@ -404,13 +590,35 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   // và các nút/menu khác gọi đúng hàm (_saveDraft, _discardEmail, _pickAttachments)
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Define colors based on theme
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final sendIconColor = _isSending ? (isDarkMode ? Colors.grey[600] : Colors.grey) : (isDarkMode ? Colors.blue[300] : Colors.blueAccent);
+    final popupMenuIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final dividerColor = isDarkMode ? Colors.grey[700]! : const Color(0xFFE0E0E0);
+    final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final textFieldHintColor = isDarkMode ? Colors.grey[500] : Colors.black54;
+    final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
+    final attachmentChipBackgroundColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final attachmentChipLabelColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final attachmentChipDeleteIconColor = isDarkMode ? Colors.red[300] : Colors.red[700];
+    final attachmentHeaderColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final linearProgressIndicatorColor = isDarkMode ? Colors.blue[300] : Colors.blueAccent;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 1.0,
+        backgroundColor: appBarBackgroundColor,
+        elevation: isDarkMode ? 0.5 : 1.0, // Slightly different elevation for dark mode
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black54),
+          icon: Icon(Icons.close, color: appBarIconColor),
           tooltip: 'Hủy thư',
           onPressed: _discardEmail,
         ),
@@ -419,20 +627,21 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
            widget.composeMode == 'replyAll' ? 'Trả lời tất cả' :
            widget.composeMode == 'forward' ? 'Chuyển tiếp' :
            'Soạn thư',
-        style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w500)),
+        style: TextStyle(color: appBarTextColor, fontSize: 18, fontWeight: FontWeight.w500)),
         actions: [
           IconButton(
-              icon: const Icon(Icons.attach_file_outlined,
-                  color: Colors.black54),
+              icon: Icon(Icons.attach_file_outlined,
+                  color: appBarIconColor),
               tooltip: 'Đính kèm tệp',
               onPressed: _pickAttachments),
           IconButton(
               icon: Icon(Icons.send_outlined,
-                  color: _isSending ? Colors.grey : Colors.blueAccent),
+                  color: sendIconColor),
               tooltip: 'Gửi',
-              onPressed: _isSending ? null : _sendEmailAndSaveToFirestore), // SỬA Ở ĐÂY
+              onPressed: _isSending ? null : _sendEmailAndSaveToFirestore), 
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
+            icon: Icon(Icons.more_vert, color: popupMenuIconColor),
+            color: popupMenuBackgroundColor, // Theme for popup menu background
             onSelected: (value) {
               if (value == 'save_draft') {
                 _saveDraft();
@@ -441,22 +650,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'save_draft',
-                child: Text('Lưu bản nháp'),
+                child: Text('Lưu bản nháp', style: TextStyle(color: popupMenuTextColor)),
               ),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'discard_popup',
-                child: Text('Hủy bỏ'),
+                child: Text('Hủy bỏ', style: TextStyle(color: popupMenuTextColor)),
               ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
+              const PopupMenuDivider(), // Removed color property
+              PopupMenuItem<String>(
                 value: 'schedule_send',
-                child: Text('Lên lịch gửi'),
+                child: Text('Lên lịch gửi', style: TextStyle(color: popupMenuTextColor)),
               ),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'confidential_mode',
-                child: Text('Chế độ bảo mật'),
+                child: Text('Chế độ bảo mật', style: TextStyle(color: popupMenuTextColor)),
               ),
             ],
           ),
@@ -464,12 +673,13 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       ),
       body: Column(
         children: [
-          if (_isSending) const LinearProgressIndicator(),
+          if (_isSending) LinearProgressIndicator(color: linearProgressIndicatorColor, backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[300]),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(0),
               children: [
                 _buildRecipientField(
+                  context: context, // Pass context
                   label: "Đến",
                   controller: _toController,
                   focusNode: _toFocusNode,
@@ -480,75 +690,94 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                   },
                 ),
                 if (_showCcBcc) ...[
-                  const Divider(height: 0, indent: 16, endIndent: 16, color: Color(0xFFE0E0E0)),
-                  _buildRecipientField(label: "Cc", controller: _ccController),
-                  const Divider(height: 0, indent: 16, endIndent: 16, color: Color(0xFFE0E0E0)),
-                  _buildRecipientField(label: "Bcc", controller: _bccController),
+                  Divider(height: 0, indent: 16, endIndent: 16, color: dividerColor),
+                  _buildRecipientField(context: context, label: "Cc", controller: _ccController), // Pass context
+                  Divider(height: 0, indent: 16, endIndent: 16, color: dividerColor),
+                  _buildRecipientField(context: context, label: "Bcc", controller: _bccController), // Pass context
                 ],
-                const Divider(height: 0, indent: 16, endIndent: 16, color: Color(0xFFE0E0E0)),
-                _buildFromField(controller: _fromController),
-                const Divider(height: 0, indent: 16, endIndent: 16, color: Color(0xFFE0E0E0)),
+                Divider(height: 0, indent: 16, endIndent: 16, color: dividerColor),
+                _buildFromField(context: context, controller: _fromController), // Pass context
+                Divider(height: 0, indent: 16, endIndent: 16, color: dividerColor),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: TextField(
                     controller: _subjectController,
-                    cursorColor: Colors.black,
-                    style: const TextStyle(color: Colors.black87, fontSize: 16),
-                    decoration: const InputDecoration(
+                    cursorColor: cursorColor,
+                    style: TextStyle(color: textFieldTextColor, fontSize: 16),
+                    decoration: InputDecoration(
                       hintText: "Chủ đề",
                       border: InputBorder.none,
-                      hintStyle: TextStyle(color: Colors.black54),
-                      contentPadding: EdgeInsets.symmetric(vertical: 16.0),
+                      enabledBorder: InputBorder.none, // Ensure no border when enabled
+                      focusedBorder: InputBorder.none, // Ensure no border when focused
+                      disabledBorder: InputBorder.none, // Ensure no border when disabled
+                      errorBorder: InputBorder.none, // Ensure no border on error
+                      focusedErrorBorder: InputBorder.none, // Ensure no border on focused error
+                      hintStyle: TextStyle(color: textFieldHintColor),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16.0),
                     ),
                   ),
                 ),
-                const Divider(height: 0, color: Color(0xFFE0E0E0)),
+                Divider(height: 0, color: dividerColor),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: TextField(
                     controller: _bodyController,
-                    cursorColor: Colors.black,
-                    style: const TextStyle(color: Colors.black87, fontSize: 16),
-                    decoration: const InputDecoration(
+                    cursorColor: cursorColor,
+                    style: TextStyle(color: textFieldTextColor, fontSize: 16),
+                    decoration: InputDecoration(
                       hintText: "Soạn email",
                       border: InputBorder.none,
-                      hintStyle: TextStyle(color: Colors.black54),
-                      contentPadding: EdgeInsets.symmetric(vertical: 16.0),
+                      enabledBorder: InputBorder.none, // Ensure no border when enabled
+                      focusedBorder: InputBorder.none, // Ensure no border when focused
+                      disabledBorder: InputBorder.none, // Ensure no border when disabled
+                      errorBorder: InputBorder.none, // Ensure no border on error
+                      focusedErrorBorder: InputBorder.none, // Ensure no border on focused error
+                      hintStyle: TextStyle(color: textFieldHintColor),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16.0),
                     ),
                     maxLines: null,
                     keyboardType: TextInputType.multiline,
-                    autofocus: widget.replyOrForwardEmail == null, // Đã sửa ở đây
+                    autofocus: widget.replyOrForwardEmail == null, 
                   ),
-                ),
-                if (_attachments.isNotEmpty) ...[
-                  const Divider(height: 1, color: Color(0xFFE0E0E0)),
+                ),                if (_attachments.isNotEmpty) ...[
+                  Divider(height: 1, color: dividerColor),
                   Padding(
-                    padding: const EdgeInsets.only(left: 16.0, top:16.0, bottom: 8.0),
-                    child: Text("Tệp đính kèm (${_attachments.length}):", style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700])),
+                    padding: const EdgeInsets.only(left: 16.0, top: 16.0, bottom: 8.0),
+                    child: Text("Tệp đính kèm (${_attachments.length}):", style: TextStyle(fontWeight: FontWeight.w500, color: attachmentHeaderColor)),
                   ),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _attachments.length,
-                    itemBuilder: (context, index) {
-                      final file = _attachments[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                        child: Chip(
-                          avatar: const Icon(Icons.attach_file, size: 18),
-                          label: Text(
-                            file.path.split('/').last,
-                            overflow: TextOverflow.ellipsis,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: _attachments.asMap().entries.map((entry) {
+                        final int index = entry.key;
+                        final File file = entry.value;
+                        String fileName = kIsWeb ? file.path : file.path.split('/').last.split('\\').last;
+                        
+                        return Container(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.4),
+                          child: Chip(
+                            backgroundColor: attachmentChipBackgroundColor,
+                            avatar: Icon(_getFileIcon(fileName), size: 18, color: attachmentChipLabelColor),
+                            label: Text(
+                              fileName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: attachmentChipLabelColor, fontSize: 12),
+                            ),
+                            onDeleted: () {
+                              setState(() {
+                                String fileKey = kIsWeb ? file.path : file.path.split('/').last.split('\\').last;
+                                _webAttachmentData.remove(fileKey);
+                                _attachments.removeAt(index);
+                              });
+                            },
+                            deleteIconColor: attachmentChipDeleteIconColor,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          onDeleted: () {
-                            setState(() {
-                              _attachments.removeAt(index);
-                            });
-                          },
-                          deleteIconColor: Colors.red[700],
-                        ),
-                      );
-                    },
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ]
@@ -561,10 +790,17 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   }
 
   Widget _buildRecipientField(
-      {required String label,
+      {required BuildContext context, // Add context
+      required String label,
       required TextEditingController controller,
       FocusNode? focusNode,
       VoidCallback? onToggleCcBcc}) {
+    final theme = Theme.of(context); // Get theme
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
+    final iconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 8.0),
       child: Row(
@@ -573,16 +809,21 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           SizedBox(
             width: 50,
             child: Text(label,
-                style: TextStyle(fontSize: 16, color: Colors.grey[800])),
+                style: TextStyle(fontSize: 16, color: cursorColor)),
           ),
           Expanded(
             child: TextField(
               controller: controller,
               focusNode: focusNode,
-              cursorColor: Colors.black,
-              style: const TextStyle(color: Colors.black87, fontSize: 16),
+              cursorColor: cursorColor,
+              style: TextStyle(color: textFieldTextColor, fontSize: 16),
               decoration: const InputDecoration(
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none, // Ensure no border when enabled
+                focusedBorder: InputBorder.none, // Ensure no border when focused
+                disabledBorder: InputBorder.none, // Ensure no border when disabled
+                errorBorder: InputBorder.none, // Ensure no border on error
+                focusedErrorBorder: InputBorder.none, // Ensure no border on focused error
                 contentPadding: EdgeInsets.symmetric(vertical: 16.0),
               ),
               keyboardType: TextInputType.emailAddress,
@@ -592,7 +833,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             IconButton(
               icon: Icon(
                   _showCcBcc ? Icons.expand_less : Icons.expand_more,
-                  color: Colors.black54),
+                  color: iconColor),
               tooltip: _showCcBcc ? 'Hide Cc/Bcc' : 'Show Cc/Bcc',
               onPressed: onToggleCcBcc,
               splashRadius: 20,
@@ -606,7 +847,13 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     );
   }
 
-  Widget _buildFromField({required TextEditingController controller}) {
+  Widget _buildFromField({required BuildContext context, required TextEditingController controller}) { // Add context
+    final theme = Theme.of(context); // Get theme
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
+    final iconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 8.0),
       child: Row(
@@ -615,25 +862,34 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           SizedBox(
             width: 50,
             child: Text("Từ",
-                style: TextStyle(fontSize: 16, color: Colors.grey[800])),
+                style: TextStyle(fontSize: 16, color: cursorColor)),
           ),
           Expanded(
             child: TextField(
               controller: controller,
               readOnly: true,
-              cursorColor: Colors.black,
-              style: const TextStyle(color: Colors.black87, fontSize: 16),
+              cursorColor: cursorColor, // Though readonly, good to have for consistency
+              style: TextStyle(color: textFieldTextColor, fontSize: 16),
               decoration: const InputDecoration(
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none, // Ensure no border when enabled
+                focusedBorder: InputBorder.none, // Ensure no border when focused
+                disabledBorder: InputBorder.none, // Ensure no border when disabled
+                errorBorder: InputBorder.none, // Ensure no border on error
+                focusedErrorBorder: InputBorder.none, // Ensure no border on focused error
                 contentPadding: EdgeInsets.symmetric(vertical: 16.0),
               ),
             ),
           ),
            IconButton(
-            icon: const Icon(Icons.expand_more, color: Colors.black54),
+            icon: Icon(Icons.expand_more, color: iconColor),
             tooltip: 'Đổi tài khoản gửi',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chọn tài khoản gửi...")));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: const Text("Chọn tài khoản gửi..."),
+                backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
+                behavior: SnackBarBehavior.floating,
+              ));
             },
             splashRadius: 20,
             padding: EdgeInsets.zero,
@@ -642,5 +898,74 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         ],
       ),
     );
+  }
+  
+  IconData _getFileIcon(String fileName) {
+    String extension = fileName.split('.').last.toLowerCase();
+    
+    switch (extension) {
+      // Images
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'svg':
+        return Icons.image_outlined;
+      
+      // Videos
+      case 'mp4':
+      case 'avi':
+      case 'mkv':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'webm':
+        return Icons.videocam_outlined;
+      
+      // Audio
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+      case 'ogg':
+      case 'flac':
+      case 'm4a':
+        return Icons.audiotrack_outlined;
+      
+      // Documents
+      case 'pdf':
+        return Icons.picture_as_pdf_outlined;
+      case 'doc':
+      case 'docx':
+        return Icons.description_outlined;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart_outlined;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow_outlined;
+      case 'txt':
+      case 'rtf':
+        return Icons.article_outlined;
+      
+      // Archives
+      case 'zip':
+      case 'rar':
+      case '7z':
+      case 'tar':
+      case 'gz':
+        return Icons.folder_zip_outlined;
+      
+      // Code files
+      case 'html':
+      case 'css':
+      case 'js':
+      case 'json':
+      case 'xml':
+        return Icons.code_outlined;
+        default:
+        return Icons.insert_drive_file_outlined;
+    }
   }
 }

@@ -1,14 +1,26 @@
-// lib/screens/email_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+// Web specific imports - conditional import
+import 'dart:html' as html show document, AnchorElement;
 // Make sure these paths are correct for your project structure
 import '../widgets/action_button.dart';
 import 'compose_email_screen.dart';
+import 'file_viewer_screen.dart';
 
 class EmailDetailScreen extends StatefulWidget {
   final Map<String, dynamic> email; // email should have 'id', and potentially 'senderId'
-  const EmailDetailScreen({super.key, required this.email});
+  final bool? isSentView; // ADDED: To indicate if this is a sent email view
+  const EmailDetailScreen({super.key, required this.email, this.isSentView});
 
   @override
   State<EmailDetailScreen> createState() => _EmailDetailScreenState();
@@ -19,12 +31,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   late bool _isStarredLocally;
   late bool _isReadLocally;
   User? _currentUser;
-
   // For fetched sender details
   String? _fetchedSenderDisplayNameForDetail;
   String? _fetchedSenderAvatarUrlForDetail;
   String _senderInitialLetterForDetail = '?';
   bool _isLoadingSenderDetailsForDetail = true;
+  
+  // For fetched recipient details (for Sent view)
+  String? _fetchedRecipientAvatarUrl;
+  bool _isLoadingRecipientDetails = false;
+
+  Map<String, double> _downloadProgress = {}; // Track download progress for each file
+  Set<String> _downloadingFiles = {}; // Track which files are being downloaded
+  bool _emailDataWasUpdated = false; // Ensure this flag is present
 
   @override
   void initState() {
@@ -46,6 +65,11 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
     _fetchSenderDetailsForDetailScreen();
 
+    // Fetch recipient avatar if this is a Sent view
+    if (widget.isSentView == true) {
+      _fetchRecipientAvatarForSentView();
+    }
+
     // Automatically mark as read in Firestore if not already read by this user
     if (!_isReadLocally && _currentUser != null && widget.email['id'] != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,16 +84,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   setState(() {
                     _isReadLocally = true;
                     // Update local email data immediately
-                    if (widget.email['emailIsReadBy'] is Map) {
-                      (widget.email['emailIsReadBy'] as Map<String, dynamic>)[_currentUser!.uid] = true;
-                    } else {
-                       widget.email['emailIsReadBy'] = <String, dynamic>{_currentUser!.uid: true};
-                    }
+                    widget.email['emailIsReadBy'] = {
+                      ...widget.email['emailIsReadBy'] ?? {},
+                      _currentUser!.uid: true,
+                    };
                   });
                 }
               })
               .catchError((error) {
-                print("Failed to mark email as read for user ${_currentUser!.uid}: $error");
+                print("Error marking email as read in Firestore: $error");
                 return null;
               });
         }
@@ -128,6 +151,49 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
   }
 
+  Future<void> _fetchRecipientAvatarForSentView() async {
+    if (!mounted || widget.isSentView != true) return;
+
+    if (mounted) {
+      setState(() {
+        _isLoadingRecipientDetails = true;
+      });
+    }
+
+    String? fetchedUrl;
+    final List<dynamic>? recipientIds = widget.email['recipientIds'] as List<dynamic>?;
+
+    if (recipientIds != null && recipientIds.isNotEmpty) {
+      final String firstRecipientId = recipientIds.first.toString();
+      try {
+        print("EmailDetailScreen (Sent View): Fetching avatar for recipient ID: $firstRecipientId");
+        DocumentSnapshot recipientDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(firstRecipientId)
+            .get();
+        
+        if (recipientDoc.exists) {
+          final data = recipientDoc.data() as Map<String, dynamic>;
+          fetchedUrl = data['avatarUrl'] as String?;
+          print("EmailDetailScreen (Sent View): Fetched recipient avatar URL: $fetchedUrl for ID: $firstRecipientId");
+        } else {
+          print("EmailDetailScreen (Sent View): Recipient document not found for ID: $firstRecipientId");
+        }
+      } catch (e) {
+        print('Error fetching recipient avatar for ID $firstRecipientId: $e');
+      }
+    } else {
+      print("EmailDetailScreen (Sent View): No recipient IDs found in email data.");
+    }
+
+    if (mounted) {
+      setState(() {
+        _fetchedRecipientAvatarUrl = fetchedUrl;
+        _isLoadingRecipientDetails = false;
+      });
+    }
+  }
+
   Future<void> _toggleStarStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newStarStatus = !_isStarredLocally;
@@ -151,17 +217,20 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       if (mounted) {
         setState(() {
           _isStarredLocally = newStarStatus;
-          widget.email['emailLabels'] = emailLabelsMap;
+          widget.email['emailLabels'] = emailLabelsMap; // Update the local email map
+          widget.email['starred'] = newStarStatus;   // CRITICAL: Update 'starred' field in the local email map
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newStarStatus ? 'Đã gắn dấu sao' : 'Đã bỏ dấu sao')),
-        );
+        _emailDataWasUpdated = true; // Set the flag
       }
     } catch (e) {
       print("Error updating star status for user $userId on email $emailId: $e");
       if (mounted) {
+        final theme = Theme.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật dấu sao: $e')),
+          SnackBar(
+            content: Text('Lỗi cập nhật trạng thái sao: $e'),
+            backgroundColor: theme.colorScheme.error,
+          ),
         );
       }
     }
@@ -170,6 +239,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   Future<void> _toggleReadStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newReadStatus = !_isReadLocally;
+    final theme = Theme.of(context); // Get theme for SnackBar
 
     try {
       await FirebaseFirestore.instance
@@ -180,209 +250,530 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       if (mounted) {
         setState(() {
           _isReadLocally = newReadStatus;
-          if (widget.email['emailIsReadBy'] is Map) {
-            (widget.email['emailIsReadBy'] as Map)[_currentUser!.uid] = newReadStatus;
-          } else {
-            widget.email['emailIsReadBy'] = {_currentUser!.uid: newReadStatus};
-          }
+          widget.email['emailIsReadBy'] = {
+            ...widget.email['emailIsReadBy'] ?? {},
+            _currentUser!.uid: newReadStatus,
+          };
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newReadStatus ? 'Đã đánh dấu là đã đọc' : 'Đã đánh dấu là chưa đọc')),
-        );
-        if (!newReadStatus) { // If marked as unread
-          Navigator.pop(context, {'markedAsUnread': true, 'emailId': widget.email['id']});
-        }
       }
     } catch (e) {
       print("Error updating read status: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi cập nhật trạng thái đọc: $e')),
+          SnackBar(
+            content: Text('Lỗi cập nhật trạng thái đọc: $e'),
+            backgroundColor: theme.colorScheme.error,
+          ),
         );
       }
     }
   }
 
-  Future<void> _deleteEmail() async {
-    if (_currentUser == null || widget.email['id'] == null) return;
-    final String userId = _currentUser!.uid;
-    final String emailId = widget.email['id'];
+Future<void> _deleteEmail() async {
+  if (_currentUser == null || widget.email['id'] == null) {
+    print("No authenticated user or invalid email ID");
+    return;
+  }
+  final theme = Theme.of(context);
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('emails')
-          .doc(emailId)
-          .update({
-              // Add current user's ID to 'isTrashedBy' list (or create if it doesn't exist)
-              'isTrashedBy': FieldValue.arrayUnion([userId]),
-              // Remove current user's ID from 'emailLabels.userId' list to untag it from inbox/other labels
-              // This ensures it doesn't show up in other views if it's only trashed by this user
-              'emailLabels.$userId': FieldValue.delete(), // Example: Delete all labels for this user for this email
-              // Or more specifically:
-              // 'emailLabels.$userId': FieldValue.arrayRemove(['Inbox', 'Starred', ...other labels this user might have applied])
-            });
+  try {
+    final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
+    final doc = await docRef.get();
+    if (!doc.exists) {
+      print("Document does not exist");
+      return;
+    }
+    print("Document data: ${doc.data()}");
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã chuyển vào Thùng rác')),
-        );
-        Navigator.pop(context, {'deleted': true, 'emailId': widget.email['id']});
-      }
-    } catch (e) {
-      print("Error moving email to trash: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi chuyển vào thùng rác: $e')),
-        );
-      }
+    await docRef.update({
+      'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Email đã được chuyển vào thùng rác'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+        ),
+      );
+      Navigator.pop(context);
+    }
+  } catch (e) {
+    print("Error deleting email: $e");
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi xóa email: $e'),
+          backgroundColor: theme.colorScheme.error,
+        ),
+      );
     }
   }
+}
 
   void _assignLabels() {
+    final theme = Theme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chức năng gán nhãn (chưa triển khai)')),
+      SnackBar(
+        content: const Text('Gán nhãn (chưa triển khai)'),
+        backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange,
+      ),
     );
   }
-  
-  void _archiveEmail() {
-     if (_currentUser == null || widget.email['id'] == null) return;
-    final String userId = _currentUser!.uid;
-    final String emailId = widget.email['id'];
+  // File viewing and downloading methods
+  Future<void> _viewAttachment(String attachmentUrl, String fileName) async {
+    final extension = fileName.split('.').last.toLowerCase();
+    
+    // Check if file can be viewed directly in app
+    if (_canViewInApp(extension)) {
+      try {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
 
-    // Example: Move to an "Archived" label and remove "Inbox"
-    // This is a conceptual implementation. Your actual label logic might vary.
-    FirebaseFirestore.instance.collection('emails').doc(emailId).set({
-      'emailLabels': {
-        userId: FieldValue.arrayUnion(['Archived']),
-      },
-      // To remove from Inbox, you might remove the 'Inbox' label specifically
-      // 'emailLabels.$userId': FieldValue.arrayRemove(['Inbox']),
-      // Or ensure 'involvedUserIds' still includes the user if archived emails are shown in 'All mail'
-    }, SetOptions(merge: true)) // Use merge to update existing labels without overwriting other users'
-    .then((_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu trữ')));
-        Navigator.pop(context, {'archived': true, 'emailId': emailId});
+        // Navigate to file viewer
+        Navigator.pop(context); // Close loading dialog
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FileViewerScreen(
+              fileUrl: attachmentUrl,
+              fileName: fileName,
+              fileExtension: extension,
+            ),
+          ),
+        );
+      } catch (e) {
+        Navigator.pop(context); // Close loading dialog if still open
+        _showErrorSnackBar('Không thể mở file: $e');
       }
-    }).catchError((e) {
-       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi lưu trữ: $e')));
-       }
-    });
+    } else {
+      // For non-viewable files, download them
+      await _downloadAttachment(attachmentUrl, fileName);
+    }
   }
 
-  Widget _buildMetaDetailRow(String label, String value) {
-    if (value.isEmpty) return const SizedBox.shrink();
+  bool _canViewInApp(String extension) {
+    const viewableExtensions = [
+      'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
+      'txt', 'json', 'xml', 'html', 'css', 'js'
+    ];
+    return viewableExtensions.contains(extension);
+  }  Future<void> _downloadAttachment(String attachmentUrl, String fileName) async {
+    try {
+      // Start download tracking
+      setState(() {
+        _downloadingFiles.add(fileName);
+        _downloadProgress[fileName] = 0.0;
+      });
+
+      // Show immediate feedback
+      final theme = Theme.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đang tải xuống "$fileName"...'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.blue[700] : Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      if (kIsWeb) {
+        // For web platforms - trigger browser download
+        await _downloadFileForWeb(attachmentUrl, fileName);
+      } else {
+        // For mobile platforms - download to device storage
+        await _downloadFileForMobile(attachmentUrl, fileName);
+      }
+    } catch (e) {
+      _showErrorSnackBar('Lỗi tải xuống file: $e');
+    } finally {
+      // Clean up download tracking
+      if (mounted) {
+        setState(() {
+          _downloadingFiles.remove(fileName);
+          _downloadProgress.remove(fileName);
+        });
+      }
+    }
+  }  Future<void> _downloadFileForWeb(String url, String fileName) async {
+    try {
+      if (kIsWeb) {
+        // For web platforms - use platform-specific download
+        final response = await http.get(Uri.parse(url));
+        
+        if (response.statusCode == 200) {
+          // Update progress during download
+          for (int i = 0; i <= 100; i += 25) {
+            await Future.delayed(const Duration(milliseconds: 50));
+            if (mounted) {
+              setState(() {
+                _downloadProgress[fileName] = i / 100.0;
+              });
+            }
+          }
+          
+          // For web, we'll use a data URL to trigger download
+          final base64 = base64Encode(response.bodyBytes);
+          final dataUrl = 'data:application/octet-stream;base64,$base64';
+          
+          // Create download element and trigger click
+          final anchor = html.document.createElement('a') as html.AnchorElement;
+          anchor.href = dataUrl;
+          anchor.download = fileName;
+          anchor.style.display = 'none';
+          html.document.body!.children.add(anchor);
+          anchor.click();
+          html.document.body!.children.remove(anchor);
+          
+          // Show success message
+          final theme = Theme.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã tải xuống "$fileName" thành công!'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          throw Exception('Lỗi tải file từ server (Status: ${response.statusCode})');
+        }
+      } else {
+        // Fallback for non-web platforms
+        throw Exception('Web download chỉ hoạt động trên nền tảng web');
+      }
+    } catch (e) {
+      throw Exception('Lỗi web download: $e');
+    }
+  }
+
+  Future<void> _downloadFileForMobile(String url, String fileName) async {
+    try {
+      // Request storage permission
+      var status = await Permission.storage.request();
+      if (status != PermissionStatus.granted) {
+        // For Android 11+, try with manageExternalStorage
+        status = await Permission.manageExternalStorage.request();
+        if (status != PermissionStatus.granted) {
+          throw Exception('Cần quyền truy cập bộ nhớ để tải file');
+        }
+      }
+
+      // Get Downloads directory
+      Directory? downloadsDir;
+      if (Platform.isAndroid) {
+        // Try to use the standard Downloads folder first
+        downloadsDir = Directory('/storage/emulated/0/Download');
+        if (!await downloadsDir.exists()) {
+          // Fallback to external storage directory
+          downloadsDir = await getExternalStorageDirectory();
+          if (downloadsDir != null) {
+            downloadsDir = Directory('${downloadsDir.path}/Download');
+            if (!await downloadsDir.exists()) {
+              await downloadsDir.create(recursive: true);
+            }
+          }
+        }
+      } else if (Platform.isIOS) {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
+
+      if (downloadsDir == null) {
+        throw Exception('Không thể truy cập thư mục tải xuống');
+      }
+
+      // Create full file path with unique name if needed
+      String savePath = '${downloadsDir.path}/$fileName';
+      
+      // Ensure unique filename if file already exists
+      int counter = 1;
+      String originalFileName = fileName;
+      String nameWithoutExt = originalFileName.contains('.') 
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : originalFileName;
+      String extension = originalFileName.contains('.') 
+          ? originalFileName.substring(originalFileName.lastIndexOf('.'))
+          : '';
+      
+      while (await File(savePath).exists()) {
+        fileName = '${nameWithoutExt}_$counter$extension';
+        savePath = '${downloadsDir.path}/$fileName';
+        counter++;
+      }
+
+      // Download file using Dio with progress tracking
+      Dio dio = Dio();
+      await dio.download(
+        url,
+        savePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1 && mounted) {
+            setState(() {
+              _downloadProgress[originalFileName] = received / total;
+            });
+          }
+        },
+      );
+
+      // Show success message
+      final theme = Theme.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã tải xuống "$fileName" vào thư mục Downloads'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      throw Exception('Lỗi mobile download: $e');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: theme.colorScheme.error,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildMetaDetailRow(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final labelColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
+    final valueColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 60,
+            width: 50,
             child: Text(
-              "$label:",
-              style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500),
+              '$label:',
+              style: TextStyle(fontSize: 13, color: labelColor, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: SelectableText( // Made value selectable
+            child: SelectableText(
               value,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
+              style: TextStyle(fontSize: 13, color: valueColor),
             ),
           ),
         ],
       ),
     );
+  }  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (_emailDataWasUpdated) {
+          Navigator.pop(context, widget.email); // Return the updated email data
+          return false; // Prevent default pop, as we've handled it
+        }
+        return true; // Allow default pop if no data was changed
+      },
+      child: _buildEmailDetailScaffold(context), // Original Scaffold UI moved to a new method
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final email = widget.email;
+  // This new method contains the entire Scaffold and its UI logic from your original build method
+  Widget _buildEmailDetailScaffold(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Get email data
+    final Map<String, dynamic> email = widget.email;
+
+    // Format timestamp
+    String formattedDate = '';
+    if (email['timestamp'] != null) {
+      DateTime dateTime;
+      if (email['timestamp'] is Timestamp) {
+        dateTime = (email['timestamp'] as Timestamp).toDate();
+      } else if (email['timestamp'] is String) { // Handle case where timestamp might be a String
+        dateTime = DateTime.parse(email['timestamp'].toString());
+      } else {
+        // Fallback or error handling if timestamp is neither Timestamp nor String
+        dateTime = DateTime.now(); // Or some other default
+      }
+      formattedDate = DateFormat('dd/MM/yyyy HH:mm', 'vi_VN').format(dateTime);
+    }
+
+    // Get attachments
+    final List<dynamic> attachments = email['attachments'] ?? [];
+
+    // Determine display names and recipient info
+    final bool isSentEmail = widget.isSentView == true;
     String senderDisplayNameToShow;
-    String senderInitialToShow;
     String? senderAvatarUrlToShow;
+    String senderInitialToShow;
+    String recipientDisplayToShow = '';
 
-    if (_isLoadingSenderDetailsForDetail) {
-      senderDisplayNameToShow = email["senderDisplayName"] as String? ??
-                                email["senderEmail"] as String? ??
-                                email["from"] as String? ??
-                                'Đang tải...';
-      senderInitialToShow = '?';
-      senderAvatarUrlToShow = null;
+    if (isSentEmail) {
+      // For sent emails, show recipient info
+      final List<dynamic>? toRecipients = email['toRecipients'] as List<dynamic>?;
+      // final List<dynamic>? recipientDisplayNames = email['recipientDisplayNames'] as List<dynamic>?; // This was marked as unused by analyzer
+      
+      if (toRecipients != null && toRecipients.isNotEmpty) {
+        final firstRecipient = toRecipients.first;
+        if (firstRecipient is Map && firstRecipient['email'] != null) {
+          recipientDisplayToShow = firstRecipient['name'] as String? ?? firstRecipient['email'].toString().split('@')[0];
+        } else if (firstRecipient is String) {
+          recipientDisplayToShow = firstRecipient.contains('@') ? firstRecipient.split('@')[0] : firstRecipient;
+        } else {
+          recipientDisplayToShow = 'Người nhận không rõ';
+        }
+        senderDisplayNameToShow = recipientDisplayToShow; // For avatar initial
+      } else {
+        senderDisplayNameToShow = 'Người nhận không rõ';
+        recipientDisplayToShow = senderDisplayNameToShow;
+      }
+      
+      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl; // Assuming this is fetched correctly
+      senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
     } else {
-      senderDisplayNameToShow = _fetchedSenderDisplayNameForDetail ??
-                                email["senderEmail"] as String? ??
-                                'Không rõ';
+      // For received emails, show sender info
+      if (_isLoadingSenderDetailsForDetail) {
+        senderDisplayNameToShow = email['senderDisplayName'] as String? ??
+                                  email["senderEmail"] as String? ??
+                                  email["from"] as String? ??
+                                  'Đang tải...';
+      } else {
+        senderDisplayNameToShow = _fetchedSenderDisplayNameForDetail ??
+                                  email['senderDisplayName'] as String? ??
+                                  email["senderEmail"] as String? ??
+                                  email["from"] as String? ??
+                                  'Không rõ';
+      }
+      senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail ?? email['senderAvatarUrl'] as String?;
       senderInitialToShow = _senderInitialLetterForDetail;
-      senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail;
     }
 
-    // If display name is an email, show only the part before @
-    if (senderDisplayNameToShow.contains('@') && (senderDisplayNameToShow == _fetchedSenderDisplayNameForDetail || senderDisplayNameToShow == email["senderEmail"])) {
-        senderDisplayNameToShow = senderDisplayNameToShow.split('@')[0];
-    }
+    // Recipients for meta details
+    final List<String> toRecipientsList = (email['toRecipients'] as List<dynamic>?)
+        ?.map((e) {
+          if (e is Map) return e['email']?.toString() ?? e['name']?.toString() ?? e.toString();
+          return e.toString();
+        })
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+    final List<String> ccRecipientsList = (email['ccRecipients'] as List<dynamic>?)
+        ?.map((e) {
+          if (e is Map) return e['email']?.toString() ?? e['name']?.toString() ?? e.toString();
+          return e.toString();
+        })
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
 
-    List<String> toRecipients = List<String>.from(email['toRecipients'] ?? email['to'] ?? []);
-    List<String> ccRecipients = List<String>.from(email['ccRecipients'] ?? email['cc'] ?? []);
-    List<String> bccRecipients = List<String>.from(email['bccRecipients'] ?? email['bcc'] ?? []); // Usually not shown
-    List<String> attachments = List<String>.from(email['attachments'] ?? []);
 
-
-    String formattedDate;
-    String displayTime = '';
-    if (email['timestamp'] is Timestamp) {
-      DateTime dt = (email['timestamp'] as Timestamp).toDate().toLocal();
-      formattedDate = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-      displayTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-    } else {
-      formattedDate = 'Unknown date';
-    }
+    // Define colors based on theme
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[50];
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final starColor = Colors.amber;
+    final unstarColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+    final popupMenuIconColor = appBarIconColor;
+    final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final subjectColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final avatarBackgroundColor = isDarkMode ? Colors.blue[700] : Colors.blue[700];
+    final avatarTextColor = Colors.white;
+    final senderNameColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
+    final timeColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
+    final metaDetailBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final bodyTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF3C4043) : Colors.blue[700]; // Dark grey background for dark mode
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white;    // Light blue text/icon for dark mode
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black54),
+        backgroundColor: appBarBackgroundColor,
+        elevation: isDarkMode ? 0.5 : 1.0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: appBarIconColor),
+          onPressed: () {
+            if (_emailDataWasUpdated) {
+              Navigator.pop(context, widget.email);
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            tooltip: 'Lưu trữ',
-            onPressed: _archiveEmail,
+            icon: Icon(
+              _isStarredLocally ? Icons.star : Icons.star_border,
+              color: _isStarredLocally ? starColor : unstarColor,
+              size: 20,
+            ),
+            onPressed: _toggleStarStatus,
+            tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
+          ),
+          IconButton(
+            icon: const Icon(Icons.label_outline),
+            tooltip: 'Gán nhãn',
+            onPressed: _assignLabels,
+            color: appBarIconColor,
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Chuyển vào Thùng rác',
             onPressed: _deleteEmail,
+            color: appBarIconColor,
           ),
           IconButton(
-            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined), // Using drafts_outlined for unread
+            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined),
             tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
             onPressed: _toggleReadStatus,
+            color: appBarIconColor,
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
+            icon: Icon(Icons.more_vert, color: popupMenuIconColor),
+            color: popupMenuBackgroundColor,
             onSelected: (value) {
               if (value == 'assign_labels') _assignLabels();
-              else if (value == 'move_to') ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Di chuyển đến... (chưa triển khai)')));
-              // Star toggle is handled by direct icon button, but can be added here too
+              else if (value == 'move_to') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Di chuyển đến... (chưa triển khai)'),
+                    backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến')),
+              PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến', style: TextStyle(color: popupMenuTextColor))),
               const PopupMenuDivider(),
-              PopupMenuItem<String>( // Star/Unstar in menu
-                onTap: _toggleStarStatus, // Call directly
+              PopupMenuItem<String>( 
+                onTap: _toggleStarStatus,
                 child: Row(
                   children: [
-                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? Colors.amber[600] : Colors.grey),
+                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? starColor : unstarColor),
                     const SizedBox(width: 8),
-                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao'),
+                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao', style: TextStyle(color: popupMenuTextColor)),
                   ],
                 ),
               ),
-              const PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn')),
+              PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn', style: TextStyle(color: popupMenuTextColor))),
             ],
           ),
         ],
@@ -397,17 +788,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 Expanded(
                   child: Text(
                     email['subject'] ?? '(Không có tiêu đề)',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: Color(0xFF1f1f1f)),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: subjectColor),
                   ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    _isStarredLocally ? Icons.star : Icons.star_border,
-                    color: _isStarredLocally ? Colors.amber[600] : Colors.grey[600],
-                    size: 24,
-                  ),
-                  onPressed: _toggleStarStatus,
-                  tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
                 ),
               ],
             ),
@@ -416,13 +798,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty
+                  backgroundColor: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
+                      ? Colors.transparent // Transparent if network image is shown
+                      : avatarBackgroundColor, // Background color for default asset or initials
+                  backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
                       ? NetworkImage(senderAvatarUrlToShow)
-                      : null,
+                      : const AssetImage('assets/images/default_avatar.png'), // Fallback to default asset
                   child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
-                      ? Text(senderInitialToShow, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white70))
-                      : null,
+                      // Show initials if network avatar is not available (displayed on top of default asset image)
+                      ? Text(
+                          senderInitialToShow,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor)
+                        )
+                      : null, // No child if network image is successfully loaded
                   radius: 22,
                 ),
                 const SizedBox(width: 12),
@@ -432,9 +820,9 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     children: [
                       Text(
                         senderDisplayNameToShow,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3c4043)),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: senderNameColor),
                       ),
-                      GestureDetector( // Make "tới tôi" tappable to show details
+                      GestureDetector( 
                         onTap: () {
                            if (mounted) setState(() => _showMetaDetails = !_showMetaDetails);
                         },
@@ -442,12 +830,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              "tới tôi", // This can be dynamic based on recipients
-                              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                              isSentEmail ? "đến ${recipientDisplayToShow}" : "từ ${senderDisplayNameToShow}", 
+                              style: TextStyle(fontSize: 13, color: recipientMetaColor),
                             ),
-                             Icon(
-                              _showMetaDetails ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                              color: Colors.grey[700], size: 20
+                            const SizedBox(width: 4),
+                            Icon(
+                              _showMetaDetails ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              size: 16,
+                              color: recipientMetaColor,
                             ),
                           ],
                         ),
@@ -456,37 +846,36 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                   ),
                 ),
                 Text(
-                  displayTime,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  formattedDate,
+                  style: TextStyle(fontSize: 13, color: timeColor),
                 ),
               ],
             ),
-            // const SizedBox(height: 16), // Adjusted by meta details visibility
             if (_showMetaDetails)
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
-                child: Container( // Added a container for better visual grouping
+                child: Container( 
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300, width: 0.8),
+                    border: Border.all(color: metaDetailBorderColor, width: 0.8),
+                    color: isDarkMode ? Colors.grey[850] : Colors.white,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildMetaDetailRow("From", _fetchedSenderDisplayNameForDetail ?? email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
-                      _buildMetaDetailRow("To", toRecipients.join(', ')),
-                      if (ccRecipients.isNotEmpty) _buildMetaDetailRow("Cc", ccRecipients.join(', ')),
-                      // if (bccRecipients.isNotEmpty) _buildMetaDetailRow("Bcc", bccRecipients.join(', ')), // Not shown to recipients
-                      _buildMetaDetailRow("Date", formattedDate),
+                      _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
+                      _buildMetaDetailRow(context, "To", toRecipientsList.join(', ')),
+                      if (ccRecipientsList.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipientsList.join(', ')),
+                      _buildMetaDetailRow(context, "Date", formattedDate),
                     ],
                   ),
                 ),
               ),
-            const Divider(height: 32),
-            SelectableText( // Made body selectable
+            Divider(height: 32, color: dividerColor),
+            SelectableText( 
               email['body'] ?? email['bodyContent'] ?? '(Không có nội dung)',
-              style: const TextStyle(fontSize: 15, color: Color(0xFF1f1f1f), height: 1.5),
+              style: TextStyle(fontSize: 15, color: bodyTextColor, height: 1.5),
             ),
             if (attachments.isNotEmpty)
               Padding(
@@ -494,52 +883,107 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Tệp đính kèm (${attachments.length})", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[700])),
+                    Text("Tệp đính kèm (${attachments.length})", 
+                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: attachmentHeaderColor)),
                     const SizedBox(height: 8),
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: attachments.length,
                       itemBuilder: (context, index) {
-                        final attachmentUrl = attachments[index];
-                        String fileName = attachmentUrl.split('/').last.split('?').first;
-                        try { // Decode URL component to get a readable file name
-                          fileName = Uri.decodeComponent(fileName.split('%2F').last);
-                        } catch (_) {}
+                        final attachment = attachments[index];
+                        String fileName;
+                        String? downloadUrl;
+                        
+                        if (attachment is String) {
+                          downloadUrl = attachment;
+                          fileName = _extractFileNameFromUrl(attachment);
+                        } else if (attachment is Map<String, dynamic>) {
+                          fileName = attachment['name'] ?? attachment['fileName'] ?? 'Unknown file';
+                          downloadUrl = attachment['downloadUrl'] ?? attachment['url'] ?? attachment.toString();
+                        } else {
+                          fileName = 'Unknown file';
+                          downloadUrl = attachment.toString();
+                        }
+                        
+                        final bool isDownloading = _downloadingFiles.contains(fileName);
+                        final double? progress = _downloadProgress[fileName];
 
                         return Card(
-                          elevation: 0.5,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: Colors.grey.shade300)
-                          ),
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          color: isDarkMode ? const Color(0xFF2C2C2C) : Colors.white,
                           child: ListTile(
-                            leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.blueAccent),
-                            title: Text(fileName, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                            trailing: IconButton(icon: Icon(Icons.download_outlined, color: Colors.grey[700]), onPressed: (){
-                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Tải $fileName... (chưa triển khai)")));
-                               // TODO: Implement download using url_launcher or similar
-                            }),
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Mở $fileName... (chưa triển khai)")));
-                              // TODO: Implement open/preview attachment
-                            },
+                            leading: Icon(
+                              _getFileIcon(fileName),
+                              color: isDarkMode ? Colors.blue[300] : Colors.blueAccent,
+                            ),
+                            title: Text(
+                              fileName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                              ),
+                            ),
+                            subtitle: attachment is Map<String, dynamic> && attachment['size'] != null 
+                                ? Text(
+                                    _formatFileSize(attachment['size']),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                    ),
+                                  )
+                                : null,
+                            trailing: isDownloading
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      value: progress,
+                                      strokeWidth: 2,
+                                      color: isDarkMode ? Colors.blue[300] : Colors.blueAccent,
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_canViewInApp(fileName.split('.').last.toLowerCase()))
+                                        IconButton(
+                                          icon: const Icon(Icons.visibility_outlined),
+                                          onPressed: downloadUrl != null
+                                              ? () => _viewAttachment(downloadUrl!, fileName)
+                                              : null,
+                                          tooltip: 'Xem file',
+                                          iconSize: 20,
+                                        ),
+                                      IconButton(
+                                        icon: const Icon(Icons.download_outlined),
+                                        onPressed: downloadUrl != null
+                                            ? () => _downloadAttachment(downloadUrl!, fileName)
+                                            : null,
+                                        tooltip: 'Tải xuống',
+                                        iconSize: 20,
+                                      ),
+                                    ],
+                                  ),
+                            onTap: downloadUrl != null
+                                ? () => _viewAttachment(downloadUrl!, fileName)
+                                : null,
                           ),
                         );
-                      }
+                      },
                     ),
                   ],
                 ),
               ),
-            const SizedBox(height: 80),
+            const SizedBox(height: 80), // Space for bottom navigation bar
           ],
         ),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade300, width: 0.5))),
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+            color: bottomNavBarBackgroundColor,
+            border: Border(top: BorderSide(color: bottomNavBarBorderColor ?? Colors.transparent, width: 0.5))),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0).copyWith(bottom: MediaQuery.of(context).padding.bottom /2 + 10), // Adjust for safe area
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -552,12 +996,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => ComposeEmailScreen(
-                        replyOrForwardEmail: widget.email, // Pass the full email map
+                        replyOrForwardEmail: widget.email,
                         composeMode: 'reply',
                       ),
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
             const SizedBox(width: 10),
@@ -576,6 +1022,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
             const SizedBox(width: 10),
@@ -594,11 +1042,93 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     ),
                   );
                 },
+                buttonBackgroundColor: actionButtonBackgroundColor,
+                buttonForegroundColor: actionButtonForegroundColor,
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  IconData _getFileIcon(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+        return Icons.image;
+      case 'mp4':
+      case 'avi':
+      case 'mkv':
+      case 'mov':
+      case 'wmv':
+      case 'webm':
+        return Icons.video_file;
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+      case 'ogg':
+      case 'flac':
+        return Icons.audio_file;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return Icons.archive;
+      case 'txt':
+        return Icons.text_snippet;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }  String _formatFileSize(dynamic size) {
+    if (size == null) return 'Unknown size';
+    int bytes = size is int ? size : int.tryParse(size.toString()) ?? 0;
+    
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  String _extractFileNameFromUrl(String url) {
+    try {
+      // Extract filename from Firebase Storage URL
+      final uri = Uri.parse(url);
+      String path = uri.path;
+      
+      // For Firebase Storage URLs, the file name is usually in the path
+      if (path.contains('/o/')) {
+        // Firebase Storage format: /v0/b/{bucket}/o/{path}
+        String encoded = path.split('/o/').last.split('?').first;
+        String decoded = Uri.decodeComponent(encoded);
+        
+        // Extract just the filename part
+        if (decoded.contains('/')) {
+          return decoded.split('/').last;
+        }
+        return decoded;
+      }
+      
+      // Fallback: get last segment of path
+      return path.split('/').last.split('?').first;
+    } catch (e) {
+      // If URL parsing fails, return a default name
+      return 'attachment_${DateTime.now().millisecondsSinceEpoch}';
+    }
   }
 }

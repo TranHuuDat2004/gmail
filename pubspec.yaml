@@ -14,6 +14,13 @@ dependencies:
   file_picker: ^10.1.9 
   pinput: ^4.0.0 
 
+
+  dio: ^5.4.0                    # For file download
+  path_provider: ^2.1.2         # To get Downloads folder
+  permission_handler: ^11.2.0   # For storage permissions
+  url_launcher: ^6.2.1          # For web downloads
+
+  shared_preferences: ^2.2.2
   # Các gói khác
   http: ^1.2.0
   intl: ^0.20.2
@@ -22,6 +29,7 @@ dependencies:
   cloud_firestore: ^5.6.8
   firebase_app_check: ^0.3.2+6
   firebase_storage:
+  provider: ^6.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -33,3 +41,4 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/fonts/
+    - assets/images/default_avatar.png

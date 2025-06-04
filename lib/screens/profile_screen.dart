@@ -6,6 +6,7 @@ import 'package:gmail/screens/edit_profile_screen.dart'; // Sửa đường dẫ
 import 'package:gmail/screens/change_password_screen.dart'; // Sửa đường dẫn
 // THÊM IMPORT CHO MÀN HÌNH CÀI ĐẶT 2FA
 import 'package:gmail/screens/setup_2fa_screen.dart'; 
+import 'package:gmail/screens/display_settings_screen.dart'; // ADD THIS IMPORT
 import 'package:pinput/pinput.dart'; // THÊM IMPORT CHO PINPUT
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -39,29 +40,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _avatarWasUpdatedInSession = false; // ADDED: To track avatar changes
 
   // Thêm biến để quản lý tab đang active
-  String _activeTab = "Personal info"; // THAY ĐỔI: Mặc định là "Personal info"
+  String _activeTab = "Personal info";
 
   // ĐỊNH NGHĨA PIN THEMES ĐỂ TÁI SỬ DỤNG
-  final PinTheme _defaultPinTheme = PinTheme(
-    width: 48,
-    height: 52,
-    textStyle: TextStyle(fontSize: 20, color: Colors.grey[850], fontWeight: FontWeight.w600),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: Colors.grey[400]!),
-      borderRadius: BorderRadius.circular(8),
-    ),
-  );
+  PinTheme _defaultPinTheme(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return PinTheme(
+      width: 48,
+      height: 52,
+      textStyle: TextStyle(
+          fontSize: 20,
+          color: isDarkMode ? Colors.grey[200] : Colors.grey[850],
+          fontWeight: FontWeight.w600),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[800] : Colors.white,
+        border: Border.all(color: isDarkMode ? Colors.grey[700]! : Colors.grey[400]!),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
 
-  late final PinTheme _focusedPinTheme = _defaultPinTheme.copyDecorationWith(
-    border: Border.all(color: Colors.blue[700]!),
-  );
+  PinTheme _focusedPinTheme(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return _defaultPinTheme(context).copyDecorationWith(
+      border: Border.all(color: isDarkMode ? Colors.blue[300]! : Colors.blue[700]!),
+    );
+  }
 
-  late final PinTheme _submittedPinTheme = _defaultPinTheme.copyWith(
-    decoration: _defaultPinTheme.decoration!.copyWith(
-      color: Colors.grey[100],
-    ),
-  );
+  PinTheme _submittedPinTheme(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return _defaultPinTheme(context).copyWith(
+      decoration: _defaultPinTheme(context).decoration!.copyWith(
+            color: isDarkMode ? Colors.grey[700] : Colors.grey[100],
+          ),
+    );
+  }
 
   @override
   void initState() {
@@ -99,12 +112,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _is2FAEnabled = data['is2FAEnabled'] ?? false; // THÊM: Tải trạng thái 2FA từ Firestore
         _currentSecurityPin = data['securityPin']; // THÊM: Tải mã PIN hiện tại
 
-        if (_userAvatarUrl != null) {
+        // Khi load avatar, luôn fallback về AssetImage nếu không có avatarUrl
+        if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty) {
           _userAvatarImage = NetworkImage(_userAvatarUrl!);
         } else {
-          // Nếu không có avatarUrl, _userAvatarImage sẽ là null.
-          // CircleAvatar sẽ tự động hiển thị _userInitial.
-          _userAvatarImage = null; 
+          _userAvatarImage = const AssetImage('assets/images/default_avatar.png');
         }
 
         if (_userName.isNotEmpty && _userName != "Đang tải..." && _userName != 'Chưa có tên') {
@@ -214,62 +226,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
+    final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[100];
+    final activeTabColor = isDarkMode ? Colors.blue[300]! : Colors.blue[700]!; // Made non-nullable
+    final dividerColor = isDarkMode ? Colors.grey[700]! : Colors.grey[300]!; // Made non-nullable
+
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black54),
-            onPressed: () => Navigator.pop(context, _avatarWasUpdatedInSession), // CHANGED: Pass flag back
+            icon: Icon(Icons.arrow_back, color: appBarIconColor),
+            onPressed: () => Navigator.pop(context, _avatarWasUpdatedInSession),
           ),
-          title: const Text('Account', style: TextStyle(color: Colors.black87)),
-          backgroundColor: Colors.white,
-          elevation: 1.0,
+          title: Text('Account', style: TextStyle(color: appBarTextColor)),
+          backgroundColor: appBarBackgroundColor,
+          elevation: isDarkMode ? 0 : 1.0,
         ),
         body: const Center(child: CircularProgressIndicator()),
-        backgroundColor: Colors.grey[100],
+        backgroundColor: scaffoldBackgroundColor,
       );
     }
 
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black54),
+          icon: Icon(Icons.arrow_back, color: appBarIconColor),
           onPressed: () {
-            Navigator.pop(context, _avatarWasUpdatedInSession); // CHANGED: Pass flag back
+            Navigator.pop(context, _avatarWasUpdatedInSession);
           },
         ),
-        title: const Text('Account', style: TextStyle(color: Colors.black87)), // Bỏ logo Google
-        backgroundColor: Colors.white, // Nền trắng cho AppBar
-        elevation: 1.0, // THÊM DẤU PHẨY
+        title: Text('Account', style: TextStyle(color: appBarTextColor)),
+        backgroundColor: appBarBackgroundColor,
+        elevation: isDarkMode ? 0 : 1.0,
         actions: [
           IconButton(
-              icon: const Icon(Icons.search, color: Colors.black54),
+              icon: Icon(Icons.search, color: appBarIconColor),
               onPressed: () {}),
           IconButton(
-              icon: const Icon(Icons.help_outline, color: Colors.black54),
+              icon: Icon(Icons.help_outline, color: appBarIconColor),
               onPressed: () {}),
           IconButton(
-              icon: const Icon(Icons.apps, color: Colors.black54),
+              icon: Icon(Icons.apps, color: appBarIconColor),
               onPressed: () {}),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: CircleAvatar(
-              backgroundColor: Colors.blue[700], // Giữ màu xanh cho avatar placeholder
-              backgroundImage: _userAvatarImage, // Sử dụng _userAvatarImage đã được cập nhật
-              child: (_userAvatarImage == null && _userInitial.isNotEmpty)
-                  ? Text(_userInitial,
-                      style: const TextStyle(color: Colors.white, fontSize: 16))
-                  : null,
+              backgroundColor: activeTabColor,
+              backgroundImage: _userAvatarImage ?? const AssetImage('assets/images/default_avatar.png'),
+              child: null, // Ensures no icon or text is overlaid
             ),
           ),
-        ], // KẾT THÚC actions
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white, // Nền trắng cho thanh tab
+              color: appBarBackgroundColor, 
               border: Border(
-                  bottom: BorderSide(color: Colors.grey[300]!, width: 1.0)),
+                  bottom: BorderSide(color: dividerColor, width: 1.0)),
             ),
             child: Row(
               children: <Widget>[
@@ -282,6 +302,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _activeTab = "Personal info";
                       });
                     },
+                    context: context, // Pass context
                   ),
                 ),
                 Expanded(
@@ -293,6 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _activeTab = "Settings";
                       });
                     },
+                    context: context, // Pass context
                   ),
                 ),
               ],
@@ -300,55 +322,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ), // KẾT THÚC bottom
       ), // KẾT THÚC AppBar
-      body: Stack( // Sử dụng Stack để hiển thị loading indicator khi tải avatar
+      body: Stack(
         children: [
           SingleChildScrollView(
             padding: const EdgeInsets.all(20.0),
             child: _activeTab == "Settings"
-                    ? _buildSettingsContent()
-                    : _buildPersonalInfoContent(),
+                    ? _buildSettingsContent(context) // Pass context
+                    : _buildPersonalInfoContent(context), // Pass context
           ),
           if (_isUploadingAvatar)
             Container(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withOpacity(0.5), // Darker overlay
               child: const Center(
                 child: CircularProgressIndicator(),
               ),
             ),
         ],
       ), // KẾT THÚC body Stack
-      backgroundColor: Colors.grey[100], // Nền xám nhạt cho body
+      backgroundColor: scaffoldBackgroundColor,
     ); // KẾT THÚC Scaffold
   }
   // LOẠI BỎ HÀM _buildHomeContent()
   // Widget _buildHomeContent() { ... }
 
-  Widget _buildPersonalInfoContent() {
+  Widget _buildPersonalInfoContent(BuildContext context) { // Add context
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final sectionTitleColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Padding(
-          padding: EdgeInsets.only(bottom: 10.0),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10.0),
           child: Text("Personal Info",
               style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
-                  color: Colors.black87)),
+                  color: sectionTitleColor)),
         ),
         _buildInfoCard(
+          context: context, // Pass context
           children: [
             _buildProfileListItem(
+                context: context, // Pass context
                 title: "Avatar",
                 value: "View or change your avatar",
                 currentAvatarForDisplay: _userAvatarImage, // Truyền _userAvatarImage
                 initialForDisplay: _userInitial, // Truyền _userInitial
                 onTap: _navigateToEditProfile),
             _buildProfileListItem(
+                context: context, // Pass context
                 icon: Icons.badge_outlined,
                 title: "Name",
                 value: _userName,
                 onTap: _navigateToEditProfile),
             _buildProfileListItem(
+                context: context, // Pass context
                 icon: Icons.phone_outlined,
                 title: "Phone",
                 value: _userPhoneNumber ?? "Add recovery phone",
@@ -358,12 +388,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 20),
         _buildInfoCard(
+          context: context, // Pass context
           children: [
-            // _buildActionButton(  // Bỏ nút Chỉnh sửa hồ sơ
-            //     title: "Chỉnh sửa hồ sơ",
-            //     icon: Icons.edit_outlined,
-            //     onTap: _navigateToEditProfile),
             _buildActionButton(
+                context: context, // Pass context
                 title: "Đổi mật khẩu",
                 icon: Icons.lock_outline,
                 onTap: () async { 
@@ -374,7 +402,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (_lockoutEndTime != null && DateTime.now().isBefore(_lockoutEndTime!)) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text("Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau khi khóa kết thúc."),
+                          content: const Text("Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau khi khóa kết thúc."),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -384,25 +412,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     String? enteredPin = await showDialog<String>(
                       context: context,
                       barrierDismissible: false,
-                      builder: (BuildContext context) {
+                      builder: (BuildContext dialogContext) {
                         TextEditingController pinDialogController = TextEditingController();
                         String? dialogDisplayError;
+                        final bool isDialogDarkMode = Theme.of(dialogContext).brightness == Brightness.dark;
+                        final dialogBackgroundColor = isDialogDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+                        final dialogTitleColor = isDialogDarkMode ? Colors.grey[200] : Colors.grey[850];
+                        final dialogContentColor = isDialogDarkMode ? Colors.grey[400] : Colors.grey[700];
+                        final dialogButtonTextColor = isDialogDarkMode ? Colors.blue[300] : Colors.blue[700];
+                        final dialogCancelButtonColor = isDialogDarkMode ? Colors.grey[400] : Colors.grey[700];
+
 
                         return StatefulBuilder(
                           builder: (context, setStateDialog) {
                             return AlertDialog(
-                              backgroundColor: Colors.white,
-                              title: Text('Xác nhận mã PIN', style: TextStyle(color: Colors.grey[850], fontWeight: FontWeight.bold)),
+                              backgroundColor: dialogBackgroundColor,
+                              title: Text('Xác nhận mã PIN', style: TextStyle(color: dialogTitleColor, fontWeight: FontWeight.bold)),
                               content: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   Text(
                                     "Vui lòng nhập mã PIN bảo mật của bạn để tiếp tục đổi mật khẩu.",
-                                    style: TextStyle(color: Colors.grey[700], fontSize: 14),
+                                    style: TextStyle(color: dialogContentColor, fontSize: 14),
                                     textAlign: TextAlign.center,
                                   ),
-                                  SizedBox(height: 20),
+                                  const SizedBox(height: 20),
                                   Center(
                                     child: Pinput(
                                       controller: pinDialogController,
@@ -410,9 +445,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       obscureText: true,
                                       obscuringCharacter: '*',
                                       autofocus: true,
-                                      defaultPinTheme: _defaultPinTheme,
-                                      focusedPinTheme: _focusedPinTheme,
-                                      submittedPinTheme: _submittedPinTheme,
+                                      defaultPinTheme: _defaultPinTheme(dialogContext), // Pass context
+                                      focusedPinTheme: _focusedPinTheme(dialogContext), // Pass context
+                                      submittedPinTheme: _submittedPinTheme(dialogContext), // Pass context
                                       showCursor: true,
                                     ),
                                   ),
@@ -421,7 +456,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       padding: const EdgeInsets.only(top: 10.0),
                                       child: Text(
                                         dialogDisplayError!,
-                                        style: TextStyle(color: Colors.red[700], fontSize: 12),
+                                        style: TextStyle(color: Colors.red[isDialogDarkMode ? 300: 700], fontSize: 12),
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
@@ -429,11 +464,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               actions: <Widget>[
                                 TextButton(
-                                  child: Text('Hủy', style: TextStyle(color: Colors.grey[700])),
-                                  onPressed: () => Navigator.of(context).pop(), 
+                                  child: Text('Hủy', style: TextStyle(color: dialogCancelButtonColor)),
+                                  onPressed: () => Navigator.of(dialogContext).pop(), 
                                 ),
                                 TextButton(
-                                  child: Text('Xác nhận', style: TextStyle(color: Colors.blue[700])),
+                                  child: Text('Xác nhận', style: TextStyle(color: dialogButtonTextColor)),
                                   onPressed: () {
                                     final String pin = pinDialogController.text;
                                     String? formatValidationError;
@@ -489,8 +524,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (enteredPin == "LOCKED_OUT") {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text("Bạn đã nhập sai PIN 5 lần. Tài khoản tạm khóa nhập PIN trong 5 phút."),
-                          backgroundColor: Colors.red,
+                          content: const Text("Bạn đã nhập sai PIN 5 lần. Tài khoản tạm khóa nhập PIN trong 5 phút."),
+                          backgroundColor: Colors.red[700],
                         ),
                       );
                     } else if (enteredPin != null && _currentSecurityPin != null && enteredPin == _currentSecurityPin) {
@@ -510,7 +545,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             builder: (context) => const ChangePasswordScreen()));
                   }
                 }),
-            _buildTwoFactorAuthItem(),
+            _buildTwoFactorAuthItem(context), // Pass context
           ],
         ),
         const SizedBox(height: 30),
@@ -518,7 +553,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildSettingsContent() {
+  Widget _buildSettingsContent(BuildContext context) { // Add context
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final sectionTitleColor = isDarkMode ? Colors.grey[200] : Colors.grey[800];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -529,14 +568,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w500,
-              color: Colors.grey[800], // Giữ màu chữ cho tiêu đề Settings
+              color: sectionTitleColor,
             ),
           ),
         ),
         _buildInfoCard(
-          // Sử dụng lại _buildInfoCard để có giao diện đồng nhất
+          context: context, // Pass context
           children: [
             _buildSettingsListItem(
+              context: context, // Pass context
               icon: Icons.notifications_outlined,
               title: 'Thông báo',
               subtitle: 'Cài đặt âm thanh, rung, ưu tiên',
@@ -546,15 +586,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
             _buildSettingsListItem(
+              context: context, // Pass context
               icon: Icons.palette_outlined,
               title: 'Hiển thị',
               subtitle: 'Chủ đề, font chữ',
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Mở Cài đặt Hiển thị (chưa làm)")));
+                // MODIFIED: Navigate to DisplaySettingsScreen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()),
+                );
               },
             ),
             _buildSettingsListItem(
+              context: context, // Pass context
               icon: Icons.reply_all_outlined,
               title: 'Chế độ tự động trả lời',
               subtitle:
@@ -565,6 +610,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
             _buildSettingsListItem(
+              context: context, // Pass context
               icon: Icons.label_outline,
               title: 'Quản lý nhãn',
               subtitle: 'Tạo, sửa, xóa các nhãn email', // Thêm mô tả rõ hơn
@@ -582,48 +628,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Hàm helper mới cho các mục cài đặt (tương tự _buildProfileListItem nhưng có thể tùy chỉnh)
   Widget _buildSettingsListItem({
+    required BuildContext context, // Add context
     required IconData icon,
     required String title,
-    String? subtitle, // Subtitle là tùy chọn
+    String? subtitle,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final iconColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final titleColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final subtitleColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+    final trailingIconColor = isDarkMode ? Colors.grey[600] : Colors.grey[500];
+
     return ListTile(
-      leading: Icon(icon, color: Colors.grey[700]),
+      leading: Icon(icon, color: iconColor),
       title: Text(title,
-          style: const TextStyle(
-              fontSize: 16, color: Colors.black87)), // Tăng nhẹ fontSize
+          style: TextStyle(
+              fontSize: 16, color: titleColor)),
       subtitle: subtitle != null
           ? Text(subtitle,
-              style: TextStyle(color: Colors.grey[600], fontSize: 14))
+              style: TextStyle(color: subtitleColor, fontSize: 14))
           : null,
       trailing:
-          Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[500]),
+          Icon(Icons.arrow_forward_ios, size: 16, color: trailingIconColor),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16, vertical: 8), // Tăng nhẹ padding vertical
+          horizontal: 16, vertical: 8),
     );
   }
 
   Widget _buildNavTab(String title,
-      {bool isActive = false, VoidCallback? onTap}) {
+      {bool isActive = false, VoidCallback? onTap, required BuildContext context}) { // Add context
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final activeColor = isDarkMode ? Colors.blue[300]! : Colors.blue[700]!; // Made non-nullable
+    final inactiveColor = isDarkMode ? Colors.grey[500]! : Colors.grey[700]!; // Made non-nullable
+    final tabBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
+
+
     return InkWell(
       onTap: onTap,
       child: Container(
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(vertical: 16.0),
-        decoration: isActive
-            ? BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                      color: Colors.blue[700]!,
-                      width: 2.5),
-                ),
+        decoration: BoxDecoration( // Added BoxDecoration to control background
+          color: tabBackgroundColor, // Apply tab background color
+          border: isActive
+            ? Border(
+                bottom: BorderSide(
+                    color: activeColor,
+                    width: 2.5),
               )
             : null,
+        ),
         child: Text(
           title,
           style: TextStyle(
-            color: isActive ? Colors.blue[700] : Colors.grey[700],
+            color: isActive ? activeColor : inactiveColor,
             fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
             fontSize: 14,
           ),
@@ -632,14 +694,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildInfoCard({required List<Widget> children}) {
+  Widget _buildInfoCard({required List<Widget> children, required BuildContext context}) { // Add context
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final cardBackgroundColor = isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
+    final cardBorderColor = isDarkMode ? Colors.grey[800]! : Colors.grey[300]!;
+    final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+
+
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: cardBackgroundColor,
       margin: const EdgeInsets.symmetric(vertical: 0),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.0),
-          side: BorderSide(color: Colors.grey[300]!, width: 0.8)),
+          side: BorderSide(color: cardBorderColor, width: 0.8)),
       child: Column(
         children: List.generate(children.length, (index) {
           final isLastItem = index == children.length - 1;
@@ -659,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (shouldAddDivider)
                 Divider(
                     height: 1,
-                    // Cẩn thận với type cast, đảm bảo currentWidget thực sự là ListTile nếu có leading
+                    color: dividerColor, // Use themed divider color
                     indent: (currentWidget is ListTile && currentWidget.leading != null) ? 56 : 16, 
                     endIndent: 0),
             ],
@@ -671,54 +740,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Cập nhật _buildProfileListItem để hiển thị avatar đúng
   Widget _buildProfileListItem({
+    required BuildContext context, // Add context
     IconData? icon,
     required String title,
     required String value,
-    ImageProvider? currentAvatarForDisplay, // Đổi tên để rõ ràng hơn
-    String? initialForDisplay, // Đổi tên
+    ImageProvider? currentAvatarForDisplay,
+    String? initialForDisplay, // This parameter is no longer used for displaying initials
     VoidCallback? onTap,
   }) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final iconColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final titleColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final subtitleColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
+    final trailingIconColor = isDarkMode ? Colors.grey[600] : Colors.grey[500];
+    final avatarPlaceholderColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
+    // final avatarInitialTextColor = isDarkMode ? Colors.black87 : Colors.white; // No longer needed
+
+
     Widget leadingWidget;
     if (title == "Avatar") {
       leadingWidget = CircleAvatar(
-        backgroundImage: currentAvatarForDisplay, // Sử dụng ImageProvider được truyền vào
-        backgroundColor: Colors.blue[700],
+        backgroundImage: currentAvatarForDisplay ?? const AssetImage('assets/images/default_avatar.png'),
+        backgroundColor: avatarPlaceholderColor,
         radius: 18,
-        child: (currentAvatarForDisplay == null && initialForDisplay != null && initialForDisplay.isNotEmpty)
-            ? Text(initialForDisplay,
-                style: const TextStyle(color: Colors.white, fontSize: 16))
-            : null,
+        // Remove the child that displays the initial
       );
     } else {
-      leadingWidget = Icon(icon, color: Colors.grey[700]);
+      leadingWidget = Icon(icon, color: iconColor);
     }
 
     return ListTile(
       leading: leadingWidget,
       title: Text(title,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.normal,
-              color: Colors.black87)),
+              color: titleColor)),
       subtitle: value.isNotEmpty
-          ? Text(value, style: TextStyle(color: Colors.grey[600], fontSize: 13))
+          ? Text(value, style: TextStyle(color: subtitleColor, fontSize: 13))
           : null,
-      trailing: onTap != null // THAY ĐỔI: Chỉ hiển thị icon nếu có onTap
-          ? Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[500])
-          : null, // Không hiển thị gì nếu không có onTap
+      trailing: onTap != null
+          ? Icon(Icons.arrow_forward_ios, size: 16, color: trailingIconColor)
+          : null,
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
     );
   }
 
   // HÀM MỚI ĐỂ BUILD MỤC 2FA VỚI SWITCH
-  Widget _buildTwoFactorAuthItem() {
+  Widget _buildTwoFactorAuthItem(BuildContext context) { // Add context
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final iconColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final titleColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final switchActiveColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
+    final switchActiveTrackColor = isDarkMode ? Colors.blue[700] : Colors.blue[200]; // Adjusted for better contrast in dark
+    final switchInactiveThumbColor = isDarkMode ? Colors.grey[600] : Colors.grey[400];
+    final switchInactiveTrackColor = isDarkMode ? Colors.grey[800] : Colors.white;
+
+
     return ListTile(
-      leading: Icon(Icons.security_outlined, color: Colors.grey[700]),
+      leading: Icon(Icons.security_outlined, color: iconColor),
       title: Text(
         "Xác thực 2 yếu tố (2FA)",
         style: TextStyle(
-          color: Colors.black87,
+          color: titleColor,
           fontWeight: FontWeight.normal,
           fontSize: 15,
         ),
@@ -737,7 +824,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
 
             if (setupSuccess == true) {
-              await _loadUserData(); 
+              await _loadUserData();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Xác thực 2 yếu tố đã được bật thành công.")),
@@ -749,8 +836,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (_lockoutEndTime != null && DateTime.now().isBefore(_lockoutEndTime!)) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text("Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau."),
-                  backgroundColor: Colors.red,
+                  content: const Text("Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau."),
+                  backgroundColor: Colors.red[isDarkMode ? 400 : 700],
                 ),
               );
               return;
@@ -759,28 +846,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
             bool confirmInitialDisable = await showDialog(
                   context: context,
                   builder: (BuildContext dialogContext) {
+                    final bool isDialogDarkMode = Theme.of(dialogContext).brightness == Brightness.dark;
+                    final dialogBackgroundColor = isDialogDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+                    final dialogTitleColor = isDialogDarkMode ? Colors.grey[200] : Colors.black87;
+                    final dialogContentColor = isDialogDarkMode ? Colors.grey[400] : Colors.black54;
+                    final dialogCancelButtonColor = isDialogDarkMode ? Colors.grey[400] : Colors.grey[700];
+                    final dialogConfirmButtonColor = isDialogDarkMode ? Colors.red[300] : Colors.red[700];
+
                     return AlertDialog(
-                      backgroundColor: Colors.white,
-                      title: const Text(
+                      backgroundColor: dialogBackgroundColor,
+                      title: Text(
                         "Tắt xác thực 2 yếu tố?",
-                        style: TextStyle(color: Colors.black87),
+                        style: TextStyle(color: dialogTitleColor),
                       ),
-                      content: const Text(
+                      content: Text(
                         "Bạn có chắc chắn muốn tắt xác thực 2 yếu tố không? Điều này có thể làm giảm tính bảo mật cho tài khoản của bạn.",
-                        style: TextStyle(color: Colors.black54),
+                        style: TextStyle(color: dialogContentColor),
                       ),
                       actions: <Widget>[
                         TextButton(
                           child: Text(
                             "Hủy",
-                            style: TextStyle(color: Colors.grey[700]),
+                            style: TextStyle(color: dialogCancelButtonColor),
                           ),
                           onPressed: () => Navigator.of(dialogContext).pop(false),
                         ),
                         TextButton(
                           child: Text(
                             "Tắt",
-                            style: TextStyle(color: Colors.red[700]),
+                            style: TextStyle(color: dialogConfirmButtonColor),
                           ),
                           onPressed: () => Navigator.of(dialogContext).pop(true),
                         ),
@@ -790,39 +884,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ) ?? false;
 
             if (confirmInitialDisable) {
-              // Re-affirming structure for PIN dialog when turning OFF 2FA
               String? enteredPin = await showDialog<String>(
                 context: context,
-                barrierDismissible: false, 
-                builder: (BuildContext context) {
+                barrierDismissible: false,
+                builder: (BuildContext dialogContext) { // Renamed context to dialogContext
                   TextEditingController pinDialogController = TextEditingController();
-                  String? dialogDisplayError; 
+                  String? dialogDisplayError;
+                  final bool isDialogDarkMode = Theme.of(dialogContext).brightness == Brightness.dark; // Use dialogContext
+                  final dialogBackgroundColor = isDialogDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+                  final dialogTitleColor = isDialogDarkMode ? Colors.grey[200] : Colors.grey[850];
+                  final dialogContentColor = isDialogDarkMode ? Colors.grey[400] : Colors.grey[700];
+                  final dialogButtonTextColor = isDialogDarkMode ? Colors.blue[300] : Colors.blue[700];
+                  final dialogCancelButtonColor = isDialogDarkMode ? Colors.grey[400] : Colors.grey[700];
 
-                  return StatefulBuilder( 
-                    builder: (context, setStateDialog) {
+
+                  return StatefulBuilder(
+                    builder: (context, setStateDialog) { // This context is fine
                       return AlertDialog(
-                        backgroundColor: Colors.white,
-                        title: Text('Xác nhận mã PIN', style: TextStyle(color: Colors.grey[850], fontWeight: FontWeight.bold)),
+                        backgroundColor: dialogBackgroundColor,
+                        title: Text('Xác nhận mã PIN', style: TextStyle(color: dialogTitleColor, fontWeight: FontWeight.bold)),
                         content: Column(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center, 
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Text(
                               "Vui lòng nhập mã PIN bảo mật của bạn để tắt xác thực 2 yếu tố.",
-                              style: TextStyle(color: Colors.grey[700], fontSize: 14),
+                              style: TextStyle(color: dialogContentColor, fontSize: 14),
                               textAlign: TextAlign.center,
                             ),
-                            SizedBox(height: 20),
-                            Center( 
+                            const SizedBox(height: 20),
+                            Center(
                               child: Pinput(
                                 controller: pinDialogController,
                                 length: 6,
                                 obscureText: true,
                                 obscuringCharacter: '*',
                                 autofocus: true,
-                                defaultPinTheme: _defaultPinTheme, 
-                                focusedPinTheme: _focusedPinTheme, 
-                                submittedPinTheme: _submittedPinTheme, 
+                                defaultPinTheme: _defaultPinTheme(dialogContext), // Pass dialogContext
+                                focusedPinTheme: _focusedPinTheme(dialogContext), // Pass dialogContext
+                                submittedPinTheme: _submittedPinTheme(dialogContext), // Pass dialogContext
                                 showCursor: true,
                               ),
                             ),
@@ -831,7 +931,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 padding: const EdgeInsets.only(top: 10.0),
                                 child: Text(
                                   dialogDisplayError!,
-                                  style: TextStyle(color: Colors.red[700], fontSize: 12),
+                                  style: TextStyle(color: Colors.red[isDialogDarkMode ? 300 : 700], fontSize: 12),
                                   textAlign: TextAlign.center,
                                 ),
                               ),
@@ -839,13 +939,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         actions: <Widget>[
                           TextButton(
-                            child: Text('Hủy', style: TextStyle(color: Colors.grey[700])),
+                            child: Text('Hủy', style: TextStyle(color: dialogCancelButtonColor)),
                             onPressed: () {
-                              Navigator.of(context).pop(); 
+                              Navigator.of(dialogContext).pop(); // Use dialogContext
                             },
                           ),
                           TextButton(
-                            child: Text('Xác nhận', style: TextStyle(color: Colors.blue[700])),
+                            child: Text('Xác nhận', style: TextStyle(color: dialogButtonTextColor)),
                             onPressed: () {
                               final String pin = pinDialogController.text;
                               String? formatValidationError;
@@ -904,8 +1004,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text("Bạn đã nhập sai PIN 5 lần. Tài khoản tạm khóa nhập PIN trong 5 phút."),
-                      backgroundColor: Colors.red,
+                      content: const Text("Bạn đã nhập sai PIN 5 lần. Tài khoản tạm khóa nhập PIN trong 5 phút."),
+                      backgroundColor: Colors.red[400],
                     ),
                   );
                 }
@@ -931,35 +1031,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
         },
-        activeColor: Colors.blue[700], // Màu của thumb khi ON
-        activeTrackColor: Colors.blue[200], // Màu của track khi ON
-        inactiveThumbColor: Colors.grey[400], // Màu của thumb khi OFF
-        inactiveTrackColor: Colors.white, // Màu của track khi OFF
+        activeColor: switchActiveColor,
+        activeTrackColor: switchActiveTrackColor,
+        inactiveThumbColor: switchInactiveThumbColor,
+        inactiveTrackColor: switchInactiveTrackColor,
+        trackOutlineColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
+          // Apply border only when in light mode and the switch is in its "off" state (2FA disabled)
+          if (!isDarkMode && !states.contains(MaterialState.selected)) {
+            return Colors.grey[700]; // Dark grey border for the track in light mode
+          }
+          return null; // Default behavior for other states
+        }),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     );
   }
 
   Widget _buildActionButton({
+    required BuildContext context, // Add context
     required String title,
     required IconData icon,
     VoidCallback? onTap,
     bool isLinkStyle = false,
   }) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final iconColor = isLinkStyle 
+        ? (isDarkMode ? Colors.blue[300] : Colors.blue[700]) 
+        : (isDarkMode ? Colors.grey[400] : Colors.grey[700]);
+    final textColor = isLinkStyle 
+        ? (isDarkMode ? Colors.blue[300] : Colors.blue[700]) 
+        : (isDarkMode ? Colors.grey[200] : Colors.black87);
+    final trailingIconColor = isDarkMode ? Colors.grey[600] : Colors.grey[500];
+
     return ListTile(
       leading:
-          Icon(icon, color: isLinkStyle ? Colors.blue[700] : Colors.grey[700]),
+          Icon(icon, color: iconColor),
       title: Text(
         title,
         style: TextStyle(
-          color: isLinkStyle ? Colors.blue[700] : Colors.black87,
+          color: textColor,
           fontWeight: FontWeight.normal,
           fontSize: 15,
         ),
       ),
       trailing: isLinkStyle
           ? null
-          : Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[500]),
+          : Icon(Icons.arrow_forward_ios, size: 16, color: trailingIconColor),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     );

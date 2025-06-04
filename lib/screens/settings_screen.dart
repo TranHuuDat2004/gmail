@@ -17,18 +17,21 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cài đặt chung'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.white,
+        foregroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
         elevation: 1,
       ),
       body: ListView(
         children: <Widget>[
           _buildSettingsSectionTitle(context, "Tài khoản"),
           ListTile(
-            leading: const Icon(Icons.account_circle_outlined),
-            title: const Text('Hồ sơ & Bảo mật'),
-            subtitle: const Text('Thông tin cá nhân, mật khẩu, 2FA'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            leading: Icon(
+              Icons.account_circle_outlined,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Hồ sơ & Bảo mật', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            subtitle: Text('Thông tin cá nhân, mật khẩu, 2FA', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFB0B3B8) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               // Mục này có thể dẫn đến một màn hình con khác liệt kê
               // Profile, Change Password, 2FA riêng biệt,
@@ -40,11 +43,14 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          const Divider(height: 1),
-           ListTile( // Thêm mục đổi mật khẩu riêng nếu muốn truy cập nhanh
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Đổi mật khẩu'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          const Divider(height: 1, color: Color(0xFF444746)),
+          ListTile(
+            leading: Icon(
+              Icons.lock_outline,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Đổi mật khẩu', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               Navigator.push(
                 context,
@@ -66,10 +72,13 @@ class SettingsScreen extends StatelessWidget {
 
           _buildSettingsSectionTitle(context, "Ứng dụng"),
           ListTile(
-            leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Thông báo'),
-            subtitle: const Text('Cài đặt âm thanh, rung, ưu tiên'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            leading: Icon(
+              Icons.notifications_outlined,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Thông báo', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            subtitle: Text('Cài đặt âm thanh, rung, ưu tiên', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFB0B3B8) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               Navigator.push(
                 context,
@@ -77,32 +86,41 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFF444746)),
           ListTile(
-            leading: const Icon(Icons.palette_outlined),
-            title: const Text('Hiển thị'),
-            subtitle: const Text('Chủ đề, font chữ'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            leading: Icon(
+              Icons.palette_outlined,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Hiển thị', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            subtitle: Text('Chủ đề, font chữ', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFB0B3B8) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               // Navigator.push(context, MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Cài đặt Hiển thị")));
             },
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFF444746)),
           ListTile(
-            leading: const Icon(Icons.reply_all_outlined),
-            title: const Text('Chế độ tự động trả lời'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            leading: Icon(
+              Icons.reply_all_outlined,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Chế độ tự động trả lời', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               // Navigator.push(context, MaterialPageRoute(builder: (context) => const AutoAnswerSettingsScreen()));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Cài đặt Tự động trả lời")));
             },
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFF444746)),
           ListTile(
-            leading: const Icon(Icons.label_outline),
-            title: const Text('Quản lý nhãn'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            leading: Icon(
+              Icons.label_outline,
+              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
+            ),
+            title: Text('Quản lý nhãn', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
               // Navigator.push(context, MaterialPageRoute(builder: (context) => const LabelManagementScreen()));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Quản lý nhãn")));
@@ -110,17 +128,23 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF232323) : Colors.grey[100],
     );
   }
 
   Widget _buildSettingsSectionTitle(BuildContext context, String title) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color blueColor = const Color(0xFF1A73E8); // Màu xanh nút đăng nhập
+    final Color sectionColor = (title.toLowerCase().contains('tài khoản') || title.toLowerCase().contains('ứng dụng'))
+        ? (isDark ? Colors.red[700]! : blueColor)
+        : (isDark ? Colors.grey[300]! : Colors.grey[700]!);
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 20.0, bottom: 8.0),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
-          color: Theme.of(context).primaryColor,
+          color: sectionColor,
           fontWeight: FontWeight.bold,
           fontSize: 13,
         ),
