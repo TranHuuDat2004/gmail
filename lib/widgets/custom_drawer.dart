@@ -6,12 +6,15 @@ import 'package:gmail/screens/display_settings_screen.dart';
 import 'package:gmail/screens/auto_answer_mode_screen.dart';
 import 'package:gmail/screens/login.dart'; // Thêm import cho LoginPage
 
-class CustomDrawer extends StatelessWidget {
+class CustomDrawer extends StatefulWidget {
   final String selectedLabel;
   final Function(String) onLabelSelected;
   final List<String> userLabels;
   final List<Map<String, dynamic>> emails;
-  final Function(List<String>) onUserLabelsUpdated; // Added for label management
+  final Function(List<String>) onUserLabelsUpdated;
+  final String? currentUserDisplayName;
+  final String? currentUserEmail;
+  final String? currentUserAvatarUrl;
 
   const CustomDrawer({
     super.key,
@@ -19,9 +22,17 @@ class CustomDrawer extends StatelessWidget {
     required this.onLabelSelected,
     required this.userLabels,
     required this.emails,
-    required this.onUserLabelsUpdated, // Added for label management
+    required this.onUserLabelsUpdated,
+    this.currentUserDisplayName,
+    this.currentUserEmail,
+    this.currentUserAvatarUrl,
   });
 
+  @override
+  State<CustomDrawer> createState() => _CustomDrawerState();
+}
+
+class _CustomDrawerState extends State<CustomDrawer> {
   // Hàm xử lý đăng xuất
   Future<void> _handleLogout(BuildContext context) async {
     try {
@@ -77,57 +88,57 @@ class CustomDrawer extends StatelessWidget {
             context, // Pass context
             Icons.inbox,
             "Inbox",
-            count: currentUserId != null ? emails.where((e) {
+            count: currentUserId != null ? widget.emails.where((e) {
               final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
               final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
               return userLabels?.contains('Inbox') ?? false;
             }).length : 0,
-            isSelected: selectedLabel == "Inbox",
-            onTap: () => onLabelSelected("Inbox")
+            isSelected: widget.selectedLabel == "Inbox",
+            onTap: () => widget.onLabelSelected("Inbox")
           ),
           _buildDrawerItem(
             context, // Pass context
             Icons.star_border, 
             "Starred", 
-            count: currentUserId != null ? emails.where((e) {
+            count: currentUserId != null ? widget.emails.where((e) {
               final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
               final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
               return userLabels?.contains('Starred') ?? false;
             }).length : 0,
-            isSelected: selectedLabel == "Starred",
-            onTap: () => onLabelSelected("Starred")
+            isSelected: widget.selectedLabel == "Starred",
+            onTap: () => widget.onLabelSelected("Starred")
           ),
           _buildDrawerItem(
             context, // Pass context
             Icons.send, 
             "Sent", 
-            count: currentUserId != null ? emails.where((e) {
+            count: currentUserId != null ? widget.emails.where((e) {
               final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
               final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
               return userLabels?.contains('Sent') ?? false;
             }).length : 0,
-            isSelected: selectedLabel == "Sent",
-            onTap: () => onLabelSelected("Sent")
+            isSelected: widget.selectedLabel == "Sent",
+            onTap: () => widget.onLabelSelected("Sent")
           ),
           _buildDrawerItem(
             context, // Pass context
             Icons.drafts_outlined, 
             "Drafts", 
-            count: currentUserId != null ? emails.where((e) {
+            count: currentUserId != null ? widget.emails.where((e) {
               final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
               final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
               return userLabels?.contains('Drafts') ?? false;
             }).length : 0,
-            isSelected: selectedLabel == "Drafts",
-            onTap: () => onLabelSelected("Drafts")
+            isSelected: widget.selectedLabel == "Drafts",
+            onTap: () => widget.onLabelSelected("Drafts")
           ),
           _buildDrawerItem(
             context, // Pass context
             Icons.delete_outline, 
             "Trash", 
-            count: currentUserId != null ? emails.where((e) => (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId)).length : 0,
-            isSelected: selectedLabel == "Trash",
-            onTap: () => onLabelSelected("Trash")
+            count: currentUserId != null ? widget.emails.where((e) => (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId)).length : 0,
+            isSelected: widget.selectedLabel == "Trash",
+            onTap: () => widget.onLabelSelected("Trash")
           ),
           Divider(color: dividerColor),
           ListTile(
@@ -164,8 +175,8 @@ class CustomDrawer extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => LabelManagementScreen(
-                      currentLabels: userLabels, 
-                      onLabelsUpdated: onUserLabelsUpdated, 
+                      currentLabels: widget.userLabels, 
+                      onLabelsUpdated: widget.onUserLabelsUpdated, 
                     ),
                   ),
                 );
@@ -175,17 +186,17 @@ class CustomDrawer extends StatelessWidget {
             dense: true, // Makes the ListTile more compact
           ),
           // Calls to _buildDrawerItem for user labels no longer pass context
-          ...userLabels.map((label) => _buildDrawerItem(
+          ...widget.userLabels.map((label) => _buildDrawerItem(
                 context, // Pass context
                 Icons.label_outline,
                 label,
-                count: currentUserId != null ? emails.where((e) {
+                count: currentUserId != null ? widget.emails.where((e) {
                   final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
                   final userLabelsForThisEmail = labelsMap?[currentUserId] as List<dynamic>?;
                   return userLabelsForThisEmail?.contains(label) ?? false;
                 }).length : 0,
-                isSelected: selectedLabel == label,
-                onTap: () => onLabelSelected(label)
+                isSelected: widget.selectedLabel == label,
+                onTap: () => widget.onLabelSelected(label)
               )).toList(),
           Divider(color: dividerColor),
           ListTile( 
@@ -252,7 +263,7 @@ class CustomDrawer extends StatelessWidget {
           onTap();
         } else {
           // Default behavior if specific onTap is not provided (though it should be for these items)
-          onLabelSelected(title);
+          widget.onLabelSelected(title);
         }
         // Consider closing the drawer here if that's the desired UX
         // Navigator.pop(context); 

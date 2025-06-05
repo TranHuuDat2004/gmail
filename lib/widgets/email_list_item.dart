@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart'; // Added for Firestore access
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Added for Firebase Auth access
 
 class EmailListItem extends StatefulWidget {
   final Map<String, dynamic> email;
@@ -7,16 +8,22 @@ class EmailListItem extends StatefulWidget {
   final bool isUnread;
   final VoidCallback onTap;
   final Function(bool) onStarPressed;
-  final bool isSentView; // ADDED: To indicate if the item is in "Sent" view
+  final bool isSentView;
+  final bool isDraft; // ADDED: To indicate if the item is a draft
+  final String? currentUserDisplayName; // ADDED: For drafts
+  final String? currentUserAvatarUrl; // ADDED: For drafts
 
   const EmailListItem({
-    super.key, // Ensure super.key is passed
+    super.key,
     required this.email,
     required this.isDetailedView,
     required this.isUnread,
     required this.onTap,
     required this.onStarPressed,
     required this.isSentView,
+    this.isDraft = false, // ADDED
+    this.currentUserDisplayName, // ADDED
+    this.currentUserAvatarUrl, // ADDED
   });
 
   @override
@@ -24,12 +31,11 @@ class EmailListItem extends StatefulWidget {
 }
 
 class _EmailListItemState extends State<EmailListItem> {
-  late bool _isStarred;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  String? _fetchedDisplayUserDisplayName; // RENAMED: Generic for sender or recipient
-  String? _fetchedDisplayUserAvatarUrl; // RENAMED
-  String _displayUserInitialLetter = '?'; // RENAMED
-  bool _isLoadingDisplayDetails = true; // RENAMED
+  late bool _isStarred;  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Added for current user
+  String? _fetchedDisplayUserDisplayName;
+  String? _fetchedDisplayUserAvatarUrl;
+  bool _isLoadingDisplayDetails = true;
 
   @override
   void initState() {
@@ -48,6 +54,8 @@ class _EmailListItemState extends State<EmailListItem> {
     if (widget.email['id'] != oldWidget.email['id']) {
       needsDetailsUpdate = true;
     } else if (widget.isSentView != oldWidget.isSentView) {
+      needsDetailsUpdate = true;
+    } else if (widget.isDraft != oldWidget.isDraft) { // ADDED: Check for draft status change
       needsDetailsUpdate = true;
     } else {
       if (widget.isSentView) {
@@ -69,14 +77,37 @@ class _EmailListItemState extends State<EmailListItem> {
       _fetchDisplayDetails(); // CHANGED
     }
   }
-
-  Future<void> _fetchDisplayDetails() async { // RENAMED & MODIFIED
+  Future<void> _fetchDisplayDetails() async {
     if (!mounted) return;
     setState(() {
       _isLoadingDisplayDetails = true;
     });
 
-    if (widget.isSentView) {
+    if (widget.isDraft) {
+      User? currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        // Try to get details from passed props first (from GmailUI)
+        _fetchedDisplayUserDisplayName = "Nháp"; // Always "Nháp" for draft item title
+        _fetchedDisplayUserAvatarUrl = widget.currentUserAvatarUrl ?? currentUser.photoURL;
+        
+        // If details not passed via props, fetch from Firestore (less ideal for drafts)
+        if (widget.currentUserDisplayName == null || widget.currentUserAvatarUrl == null) {
+          try {
+            DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+            if (mounted && userDoc.exists) {
+              final data = userDoc.data() as Map<String, dynamic>;
+              // _fetchedDisplayUserDisplayName is already "Nháp"
+              _fetchedDisplayUserAvatarUrl = data['avatarUrl'] as String? ?? _fetchedDisplayUserAvatarUrl; // Use already set if Firestore is null
+            }
+          } catch (e) {
+            print("Error fetching current user details for draft: $e");
+          }
+        }
+      } else {
+        _fetchedDisplayUserDisplayName = "Nháp";
+        _fetchedDisplayUserAvatarUrl = null;
+      }
+    } else if (widget.isSentView) {
       final List<dynamic>? recipientIdsDynamic = widget.email['recipientIds'] as List<dynamic>?; 
 
       final List<String> recipientIds = recipientIdsDynamic?.map((e) => e.toString()).toList() ?? [];
@@ -84,7 +115,6 @@ class _EmailListItemState extends State<EmailListItem> {
       String recipientToDisplayId = '';
       if (recipientIds.isNotEmpty) {
         recipientToDisplayId = recipientIds.first;
-      } else {
       }
 
       String? recipientEmailForLookup;
@@ -99,15 +129,6 @@ class _EmailListItemState extends State<EmailListItem> {
           recipientEmailForLookup = firstRecipientData['email'] as String?;
           recipientNameFromData = firstRecipientData['name'] as String?; // If name is also in the map
         }
-        if (recipientEmailForLookup != null) {
-            if (recipientNameFromData != null) {
-            }
-        } else {
-            print("EmailListItem (Sent View): 'toRecipients' field found, but could not extract email from its first element: $firstRecipientData");
-        }
-      } else {
-        print("EmailListItem (Sent View): 'toRecipients' field is null or empty.");
-        print("EmailListItem (Sent View): Available keys in widget.email: ${widget.email.keys.toList()}");
       }
       
       // Fallback display name for recipient
@@ -117,9 +138,6 @@ class _EmailListItemState extends State<EmailListItem> {
           : null;
 
       String fallbackRecipientName = recipientNameFromData ?? firstRecipientDisplayNameFromEmailField ?? recipientEmailForLookup ?? 'Unknown Recipient';
-      String fallbackRecipientInitial = fallbackRecipientName.isNotEmpty && fallbackRecipientName != 'Unknown Recipient'
-                                       ? fallbackRecipientName[0].toUpperCase()
-                                       : '?';
 
       if (recipientToDisplayId.isNotEmpty) {
         try {
@@ -130,15 +148,9 @@ class _EmailListItemState extends State<EmailListItem> {
               final String actualRecipientName = data['displayName'] as String? ?? fallbackRecipientName;
               _fetchedDisplayUserDisplayName = "Đến: $actualRecipientName";
               _fetchedDisplayUserAvatarUrl = data['avatarUrl'] as String?;
-              if (actualRecipientName.isNotEmpty && actualRecipientName != 'Unknown Recipient') {
-                _displayUserInitialLetter = actualRecipientName[0].toUpperCase();
-              } else {
-                _displayUserInitialLetter = fallbackRecipientInitial;
-              }
             } else {
               _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
               _fetchedDisplayUserAvatarUrl = null;
-              _displayUserInitialLetter = fallbackRecipientInitial;
             }
           }
         } catch (e) {
@@ -146,7 +158,6 @@ class _EmailListItemState extends State<EmailListItem> {
           if (mounted) {
             _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
             _fetchedDisplayUserAvatarUrl = null;
-            _displayUserInitialLetter = fallbackRecipientInitial;
           }
         }
       } else if (recipientEmailForLookup != null && recipientEmailForLookup.isNotEmpty) {
@@ -165,16 +176,10 @@ class _EmailListItemState extends State<EmailListItem> {
               final String actualRecipientName = data['displayName'] as String? ?? data['name'] as String? ?? fallbackRecipientName;
               _fetchedDisplayUserDisplayName = "Đến: $actualRecipientName";
               _fetchedDisplayUserAvatarUrl = data['avatarUrl'] as String?;
-              if (actualRecipientName.isNotEmpty && actualRecipientName != 'Unknown Recipient') {
-                _displayUserInitialLetter = actualRecipientName[0].toUpperCase();
-              } else {
-                _displayUserInitialLetter = fallbackRecipientInitial;
-              }
             } else {
               print("EmailListItem (Sent View): Recipient user document NOT found by email '$recipientEmailForLookup'. Using fallback name: '$fallbackRecipientName'");
               _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
               _fetchedDisplayUserAvatarUrl = null;
-              _displayUserInitialLetter = fallbackRecipientInitial;
             }
           }
         } catch (e) {
@@ -182,7 +187,6 @@ class _EmailListItemState extends State<EmailListItem> {
           if (mounted) {
             _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
             _fetchedDisplayUserAvatarUrl = null;
-            _displayUserInitialLetter = fallbackRecipientInitial;
           }
         }
       } else {
@@ -190,7 +194,6 @@ class _EmailListItemState extends State<EmailListItem> {
         if (mounted) {
           _fetchedDisplayUserDisplayName = "Đến: $fallbackRecipientName";
           _fetchedDisplayUserAvatarUrl = null;
-          _displayUserInitialLetter = fallbackRecipientInitial;
         }
       }
     } else {
@@ -200,9 +203,6 @@ class _EmailListItemState extends State<EmailListItem> {
                                    widget.email['senderEmail'] as String? ??
                                    widget.email['sender'] as String? ??
                                    'Unknown Sender';
-      String fallbackInitial = fallbackDisplayName.isNotEmpty && fallbackDisplayName != 'Unknown Sender'
-                               ? fallbackDisplayName[0].toUpperCase()
-                               : '?';
 
       if (senderId != null && senderId.isNotEmpty) {
         try {
@@ -213,26 +213,18 @@ class _EmailListItemState extends State<EmailListItem> {
                                         data['name'] as String? ??
                                         fallbackDisplayName;
             _fetchedDisplayUserAvatarUrl = data['avatarUrl'] as String?;
-            if (_fetchedDisplayUserDisplayName != null && _fetchedDisplayUserDisplayName!.isNotEmpty && _fetchedDisplayUserDisplayName != 'Unknown Sender') {
-              _displayUserInitialLetter = _fetchedDisplayUserDisplayName![0].toUpperCase();
-            } else {
-               _displayUserInitialLetter = fallbackInitial;
-            }
           } else {
             _fetchedDisplayUserDisplayName = fallbackDisplayName;
             _fetchedDisplayUserAvatarUrl = widget.email['senderAvatarUrl'] as String?;
-            _displayUserInitialLetter = fallbackInitial;
           }
         } catch (e) {
           print('Error fetching sender details for email ID ${widget.email['id']}: $e');
           _fetchedDisplayUserDisplayName = fallbackDisplayName;
           _fetchedDisplayUserAvatarUrl = widget.email['senderAvatarUrl'] as String?;
-          _displayUserInitialLetter = fallbackInitial;
         }
       } else {
         _fetchedDisplayUserDisplayName = fallbackDisplayName;
         _fetchedDisplayUserAvatarUrl = widget.email['senderAvatarUrl'] as String?;
-        _displayUserInitialLetter = fallbackInitial;
       }
     }
 
@@ -241,16 +233,16 @@ class _EmailListItemState extends State<EmailListItem> {
         _isLoadingDisplayDetails = false;
       });
     }
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
     final email = widget.email;
     final theme = Theme.of(context); // Get the current theme
     final isDarkMode = theme.brightness == Brightness.dark;
 
     String preliminaryDisplayName;
-    if (widget.isSentView) {
+    if (widget.isDraft) {
+      preliminaryDisplayName = "Nháp";
+    } else if (widget.isSentView) {
         final List<dynamic>? recipientDisplayNames = widget.email['recipientDisplayNames'] as List<dynamic>?;
         final String? firstRecipientName = (recipientDisplayNames != null && recipientDisplayNames.isNotEmpty) ? recipientDisplayNames.first.toString() : null;
         final List<dynamic>? recipientEmails = widget.email['recipientEmails'] as List<dynamic>?;
@@ -261,62 +253,56 @@ class _EmailListItemState extends State<EmailListItem> {
                                  widget.email['senderEmail'] as String? ??
                                  widget.email['sender'] as String? ??
                                  'Loading...';
-    }
-
-    final String displayName = _isLoadingDisplayDetails
-        ? preliminaryDisplayName
-        : (_fetchedDisplayUserDisplayName ?? (widget.isSentView ? 'Đến: Unknown Recipient' : 'Unknown Sender'));
+    }final String displayName = widget.isDraft
+        ? "Nháp"
+        : (_isLoadingDisplayDetails
+            ? preliminaryDisplayName
+            : (_fetchedDisplayUserDisplayName ?? (widget.isSentView ? 'Đến: Unknown Recipient' : 'Unknown Sender')));
     
-    final String? avatarUrl = _isLoadingDisplayDetails ? null : _fetchedDisplayUserAvatarUrl;
-    final String initialForAvatar = _isLoadingDisplayDetails ? '?' : _displayUserInitialLetter;
+    final String? avatarUrl = widget.isDraft
+        ? _fetchedDisplayUserAvatarUrl // This would be current user's avatar for draft
+        : (_isLoadingDisplayDetails ? null : _fetchedDisplayUserAvatarUrl);
     
     final String rawSubject = widget.email["subject"] as String? ?? '';
     final bool isSubjectEmpty = rawSubject.trim().isEmpty;
     final String displaySubject = isSubjectEmpty
-        ? (widget.isSentView ? "(Không có tiêu đề)" : "(No Subject)")
-        : rawSubject;
-
-    final String rawBody = widget.email["body"] as String? ?? widget.email["bodyPlainText"] as String? ?? '';
-    final bool isBodyEmpty = rawBody.trim().isEmpty;
-    String displayBodyPreview = rawBody; // Default to rawBody
+        ? (widget.isDraft ? "(Không có tiêu đề)" : (widget.isSentView ? "(Không có tiêu đề)" : "(No Subject)"))
+        : rawSubject;    // Get body content with proper priority for drafts
+    final String rawBody = widget.email["bodyPlainText"] as String? ?? widget.email["body"] as String? ?? '';
+    final bool isBodyReallyEmpty = rawBody.trim().isEmpty;
+    String displayBodyPreview = rawBody.trim(); // Default to trimmed rawBody
     bool isBodyPlaceholder = false;
 
     if (widget.isDetailedView) {
-      if (isBodyEmpty) {
+      if (isBodyReallyEmpty) {
         displayBodyPreview = "(Không có nội dung)";
         isBodyPlaceholder = true;
       }
     } else {
-      if (isBodyEmpty) {
+      if (isBodyReallyEmpty) {
         displayBodyPreview = ''; // Keep it empty if not detailed view and body is empty
       }
     }
     
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: avatarUrl != null && avatarUrl.isNotEmpty
-            ? Colors.transparent
-            : theme.colorScheme.secondaryContainer,
+        backgroundColor: theme.colorScheme.secondaryContainer,
         backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
             ? NetworkImage(avatarUrl)
             : const AssetImage('assets/images/default_avatar.png'),
-        child: (avatarUrl == null || avatarUrl.isEmpty)
-            ? Text(
-                initialForAvatar,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-              )
-            : null,
-      ),
-      title: Text(
-        displayName, // Use the fetched or fallback display name
+        // Always null - no text overlay on default avatar
+        child: null,
+      ),      title: Text(
+        displayName,
         style: TextStyle(
-          fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
-          color: widget.isUnread 
-              ? (isDarkMode ? theme.colorScheme.onSurface : theme.colorScheme.primary) 
-              : (isDarkMode ? Colors.grey[400] : Colors.black54),
+          fontWeight: (widget.isUnread && !widget.isDraft) ? FontWeight.bold : FontWeight.normal, // Normal for drafts
+          color: isDarkMode
+              ? Colors.grey[300] // Đã đọc và chưa đọc đều là xám sáng ở dark mode
+              : (widget.isDraft
+                  ? Colors.black54 // Specific color for "Nháp" in light mode
+                  : (widget.isUnread 
+                      ? theme.colorScheme.primary 
+                      : Colors.black54)),
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -328,10 +314,10 @@ class _EmailListItemState extends State<EmailListItem> {
                 Text(
                   displaySubject, // Use the potentially placeholder subject
                   style: TextStyle(
-                    fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
-                    color: widget.isUnread
-                        ? (isDarkMode ? Colors.grey[300] : Colors.black87)
-                        : (isDarkMode ? Colors.grey[500] : Colors.grey[700]),
+                    fontWeight: (widget.isUnread && !widget.isDraft) ? FontWeight.bold : FontWeight.normal, // Normal for drafts
+                    color: isDarkMode
+                        ? Colors.grey[400] // Đã đọc và chưa đọc đều là xám sáng ở dark mode
+                        : (widget.isUnread && !widget.isDraft ? const Color.fromARGB(221, 0, 0, 0) : Colors.grey[700]),
                     fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
                   ),
                   maxLines: 1,
@@ -354,9 +340,10 @@ class _EmailListItemState extends State<EmailListItem> {
           : Text( // For non-detailed view, only show subject
               displaySubject,
               style: TextStyle(
-                color: widget.isUnread
-                    ? (isDarkMode ? Colors.grey[400] : Colors.black54)
-                    : (isDarkMode ? Colors.grey[500] : Colors.grey[700]),
+                fontWeight: (widget.isUnread && !widget.isDraft) ? FontWeight.bold : FontWeight.normal, // Normal for drafts
+                color: isDarkMode
+                    ? Colors.grey[400] // Đã đọc và chưa đọc đều là xám sáng ở dark mode
+                    : (widget.isUnread && !widget.isDraft ? Colors.black87 : Colors.grey[700]),
                 fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
               ),
               maxLines: 1,
@@ -387,14 +374,14 @@ class _EmailListItemState extends State<EmailListItem> {
                 style: TextStyle(
                   fontSize: 12,
                   color: theme.brightness == Brightness.dark
-                      ? (widget.isUnread ? Colors.grey[300] : Colors.grey[500])
-                      : (widget.isUnread ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
-                  fontWeight: widget.isUnread ? FontWeight.bold : FontWeight.normal,
+                      ? ((widget.isUnread && !widget.isDraft) ? Colors.grey[300] : Colors.grey[500])
+                      : ((widget.isUnread && !widget.isDraft) ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                  fontWeight: (widget.isUnread && !widget.isDraft) ? FontWeight.bold : FontWeight.normal, // Normal for drafts
                 ),
               );
             },
-          ),
-          const SizedBox(height: 4), 
+          ),          const SizedBox(height: 4),
+          // Hiển thị star cho cả draft và non-draft
           SizedBox( 
             width: 24,
             height: 24,
@@ -414,6 +401,8 @@ class _EmailListItemState extends State<EmailListItem> {
                   _isStarred = !_isStarred;
                 });
                 widget.email['starred'] = _isStarred;
+                
+                // Gọi callback để parent widget xử lý
                 await widget.onStarPressed(_isStarred);
               },
             ),
@@ -423,7 +412,7 @@ class _EmailListItemState extends State<EmailListItem> {
       onTap: widget.onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       // Reverted tileColor to default behavior, text color changes will handle visibility
-      tileColor: widget.isUnread && theme.brightness == Brightness.light 
+      tileColor: (widget.isUnread && !widget.isDraft) && theme.brightness == Brightness.light 
           ? theme.colorScheme.primaryContainer.withOpacity(0.1) 
           : null,
     );

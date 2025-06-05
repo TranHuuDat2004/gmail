@@ -121,7 +121,6 @@ class _Setup2FAScreenState extends State<Setup2FAScreen> {
     final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
     final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
-    final primaryTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final secondaryTextColor = isDarkMode ? Colors.grey[400] : Colors.black54;
     final labelTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final errorTextColor = isDarkMode ? Colors.red[300]! : theme.colorScheme.error;

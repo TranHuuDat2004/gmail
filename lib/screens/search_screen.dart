@@ -7,7 +7,8 @@ import '../widgets/email_list_item.dart';
 import 'email_detail_screen.dart'; // Import EmailDetailScreen
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialSearchQuery;
+  const SearchScreen({super.key, this.initialSearchQuery});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -31,6 +32,9 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSearchQuery != null) {
+      _searchController.text = widget.initialSearchQuery!;
+    }
     _loadRecentSearches();
     _searchController.addListener(() {
       if (_searchController.text.isEmpty && mounted) {

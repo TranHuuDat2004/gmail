@@ -4,22 +4,37 @@ import 'dart:io'; // For File
 import 'dart:typed_data'; // For Uint8List (web bytes)
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart'; // Bạn có thể dùng một trong hai hoặc cả hai
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:async'; // Thêm vào đầu file, dưới các import hiện có
+import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class ComposeEmailScreen extends StatefulWidget {
   final Map<String, dynamic>? replyOrForwardEmail;
   final String? composeMode;
+  final String? recipientEmail;
+  final String? subject;
+  final String? initialBody;
+  final bool isReply;
+  final bool isReplyAll;
+  final bool isForward;
+  final Map<String, dynamic>? originalEmail;
+  final Map<String, dynamic>? draftToLoad; // Added for loading draft data
 
   const ComposeEmailScreen({
     super.key,
     this.replyOrForwardEmail,
     this.composeMode,
+    this.recipientEmail,
+    this.subject,
+    this.initialBody,
+    this.isReply = false,
+    this.isReplyAll = false,
+    this.isForward = false,
+    this.originalEmail,
+    this.draftToLoad, // Added
   });
 
   @override
@@ -60,7 +75,6 @@ void initState() {
 }
 
   final FocusNode _toFocusNode = FocusNode();
-
   Future<void> _loadAppSettingsAndInitialize() async {
     setState(() {
       _isLoadingAppSettings = true;
@@ -84,9 +98,36 @@ void initState() {
     }
 
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email;
-    _fromController.text = currentUserEmail ?? "anonymous@example.com";
-
-    if (widget.replyOrForwardEmail != null) {
+    _fromController.text = currentUserEmail ?? "anonymous@example.com";    // Priority: draftToLoad > replyOrForwardEmail > new email
+    if (widget.draftToLoad != null) {
+      // Load draft data
+      _draftId = widget.draftToLoad!['id'];
+      _toController.text = (widget.draftToLoad!['toRecipients'] as List<dynamic>?)?.join(', ') ?? '';
+      _ccController.text = (widget.draftToLoad!['ccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
+      _bccController.text = (widget.draftToLoad!['bccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
+      _subjectController.text = widget.draftToLoad!['subject'] ?? '';
+      _showCcBcc = widget.draftToLoad!['showCcBcc'] ?? false;
+      
+      if (widget.draftToLoad!['bodyDeltaJson'] != null) {
+        try {
+          final deltaJson = jsonDecode(widget.draftToLoad!['bodyDeltaJson'] as String);
+          _quillController = quill.QuillController(
+            document: quill.Document.fromJson(deltaJson),
+            selection: const TextSelection.collapsed(offset: 0),
+          );
+        } catch (e) {
+          print("Error loading draft bodyDeltaJson: $e");
+          final plainText = widget.draftToLoad!['bodyPlainText'] ?? widget.draftToLoad!['body'] ?? '';
+          _quillController.document = quill.Document()..insert(0, plainText);
+        }
+      } else if (widget.draftToLoad!['bodyPlainText'] != null || widget.draftToLoad!['body'] != null) {
+        final plainText = widget.draftToLoad!['bodyPlainText'] ?? widget.draftToLoad!['body'] ?? '';
+        _quillController.document = quill.Document()..insert(0, plainText);
+      }
+      
+      final attachmentPaths = List<String>.from(widget.draftToLoad!['attachmentLocalPaths'] ?? []);
+      _attachments = attachmentPaths.map((path) => File(path)).toList();
+    } else if (widget.replyOrForwardEmail != null) {
       _populateFieldsForReplyForward();
       if (widget.replyOrForwardEmail!.containsKey('isDraft') &&
           widget.replyOrForwardEmail!['isDraft'] == true) {
@@ -104,19 +145,22 @@ void initState() {
               document: quill.Document.fromJson(deltaJson),
               selection: const TextSelection.collapsed(offset: 0),
             );
-          } catch (e) {            print("Error loading draft bodyDeltaJson: $e");
+          } catch (e) {
+            print("Error loading draft bodyDeltaJson: $e");
             final plainText = widget.replyOrForwardEmail!['bodyPlainText'] ?? widget.replyOrForwardEmail!['body'] ?? '';
             _quillController.document = quill.Document()..insert(0, plainText);
-          }} else if (widget.replyOrForwardEmail!['bodyPlainText'] != null || widget.replyOrForwardEmail!['body'] != null){
-            final plainText = widget.replyOrForwardEmail!['bodyPlainText'] ?? widget.replyOrForwardEmail!['body'] ?? '';
-             _quillController.document = quill.Document()..insert(0, plainText);
+          }
+        } else if (widget.replyOrForwardEmail!['bodyPlainText'] != null || widget.replyOrForwardEmail!['body'] != null){
+          final plainText = widget.replyOrForwardEmail!['bodyPlainText'] ?? widget.replyOrForwardEmail!['body'] ?? '';
+          _quillController.document = quill.Document()..insert(0, plainText);
         }
         final attachmentPaths = List<String>.from(widget.replyOrForwardEmail!['attachmentLocalPaths'] ?? []);
         _attachments = attachmentPaths.map((path) => File(path)).toList();
-      }    } else {
+      }
+    } else {
       // New email, don't add any default formatting - let Quill handle it naturally
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.replyOrForwardEmail == null) {
+        if (mounted && widget.replyOrForwardEmail == null && widget.draftToLoad == null) {
           FocusScope.of(context).requestFocus(_toFocusNode);
         }
       });
@@ -131,21 +175,37 @@ void initState() {
   }  void _onTextChanged() {
     // Track changes for potential future use
   }
-
   void _populateFieldsForReplyForward() {
     final email = widget.replyOrForwardEmail!;
     String originalSender = email['senderEmail'] ?? email['from'] ?? '';
     String originalSubject = email['subject'] ?? '';
-    String originalBody = email['body'] ?? email['bodyContent'] ?? '';
-
-    String quotedBody = "\n\n$originalBody";
+    
+    // Try to load rich text formatting from bodyDeltaJson first
+    quill.Document? quotedDocument;
+    if (email['bodyDeltaJson'] != null) {
+      try {
+        final deltaJson = jsonDecode(email['bodyDeltaJson'] as String);
+        quotedDocument = quill.Document.fromJson(deltaJson);
+      } catch (e) {
+        print("Error loading original bodyDeltaJson for reply/forward: $e");
+      }
+    }
+    
+    // Fallback to plain text if rich text failed
+    if (quotedDocument == null) {
+      String originalBody = email['bodyPlainText'] ?? email['body'] ?? email['bodyContent'] ?? '';
+      quotedDocument = quill.Document()..insert(0, originalBody);
+    }
 
     if (widget.composeMode == 'reply') {
       _toController.text = originalSender;
       _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
           ? originalSubject
           : "Re: $originalSubject";
-      _quillController.document = quill.Document()..insert(0, quotedBody);
+      
+      // Create new document with quoted content
+      _quillController.document = quill.Document()..insert(0, "\n\n");
+      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     } else if (widget.composeMode == 'replyAll') {
       _toController.text = originalSender;
       List<String> originalCc = List<String>.from(email['ccRecipients'] ?? []);
@@ -153,12 +213,18 @@ void initState() {
       _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
           ? originalSubject
           : "Re: $originalSubject";
-      _quillController.document = quill.Document()..insert(0, quotedBody);
+      
+      // Create new document with quoted content
+      _quillController.document = quill.Document()..insert(0, "\n\n");
+      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     } else if (widget.composeMode == 'forward') {
       _subjectController.text = originalSubject.toLowerCase().startsWith("fwd:")
           ? originalSubject
           : "Fwd: $originalSubject";
-      _quillController.document = quill.Document()..insert(0, quotedBody);
+      
+      // Create new document with quoted content
+      _quillController.document = quill.Document()..insert(0, "\n\n");
+      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     }
     _quillController.moveCursorToPosition(0);
   }
@@ -287,7 +353,6 @@ void initState() {
       }
     }
   }
-
   Future<void> _sendEmailAndSaveToFirestore() async {
     if (!mounted) return;
     final theme = Theme.of(context); // Get theme for SnackBar & Dialog
@@ -295,51 +360,48 @@ void initState() {
     if (_toController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please enter at least one recipient.'), // MODIFIED
-          backgroundColor: theme.brightness == Brightness.dark
-              ? Colors.orange[700]
-              : Colors.orange[800],
+          content: const Text('Please enter at least one recipient.'),
+          backgroundColor: theme.colorScheme.error,
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
+
+    // Check if subject is empty and ask for confirmation
     if (_subjectController.text.trim().isEmpty) {
-      final sendAnyway = await showDialog<bool>(
-          context: context, // MODIFIED
-          builder: (dialogContext) {
-            final dialogTheme = Theme.of(dialogContext);
-            final isDialogDark = dialogTheme.brightness == Brightness.dark;
-            return AlertDialog(
-              // MODIFIED
-              backgroundColor:
-                  isDialogDark ? const Color(0xFF2C2C2C) : Colors.white,
-              title: Text('Send without subject?',
-                  style: TextStyle(
-                      color: isDialogDark ? Colors.grey[200] : Colors.black87)),
-              content: Text('The subject is empty. Send the email anyway?',
-                  style: TextStyle(
-                      color: isDialogDark ? Colors.grey[400] : Colors.black54)),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text('CANCEL',
-                      style: TextStyle(
-                          color: isDialogDark
-                              ? Colors.blue[300]
-                              : Colors.blue[700])),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text('SEND',
-                      style: TextStyle(
-                          color: isDialogDark
-                              ? Colors.blue[300]
-                              : Colors.blue[700])),
-                ),
-              ],
-            );
-          });
+      final bool? sendAnyway = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          final bool isDialogDark = theme.brightness == Brightness.dark;
+          return AlertDialog(
+            backgroundColor: isDialogDark ? const Color(0xFF2C2C2C) : Colors.white,
+            title: Text('Send without subject?',
+                style: TextStyle(
+                    color: isDialogDark ? Colors.grey[200] : Colors.black87)),
+            content: Text('The subject is empty. Send the email anyway?',
+                style: TextStyle(
+                    color: isDialogDark ? Colors.grey[400] : Colors.black54)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text('CANCEL',
+                    style: TextStyle(
+                        color: isDialogDark
+                            ? Colors.blue[300]
+                            : Colors.blue[700])),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('SEND',
+                    style: TextStyle(
+                        color: isDialogDark
+                            ? Colors.blue[300]
+                            : Colors.blue[700])),
+              ),
+            ],
+          );
+        });
       if (sendAnyway != true) return;
     }
 
@@ -704,7 +766,7 @@ void initState() {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, {'draftUpdated': true, 'draftId': _draftId});
       }
     } catch (e) {
       print("Error saving draft: $e");
@@ -761,40 +823,28 @@ void initState() {
       );
     }
 
+    // Đảm bảo các biến này nằm trong build
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-
-    final scaffoldBackgroundColor =
-        isDarkMode ? const Color(0xFF121212) : Colors.white;
-    final appBarBackgroundColor =
-        isDarkMode ? const Color(0xFF202124) : Colors.white;
-    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
-    final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
-    final sendIconColor = _isSending
-        ? (isDarkMode ? Colors.grey[600] : Colors.grey)
-        : (isDarkMode ? Colors.blue[300] : Colors.blueAccent);
-    final popupMenuIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
-    final popupMenuBackgroundColor =
-        isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
-    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;    final dividerColor =
-        isDarkMode ? Colors.grey[700]! : const Color(0xFFE0E0E0);
+    final dividerColor = isDarkMode ? Colors.grey[700]! : const Color(0xFFE0E0E0);
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final cursorColor = isDarkMode ? Colors.blue[300]! : Colors.black;
-    final attachmentChipBackgroundColor =
-        isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final attachmentChipLabelColor =
-        isDarkMode ? Colors.grey[200] : Colors.black87;
-    final attachmentChipDeleteIconColor =
-        isDarkMode ? Colors.red[300] : Colors.red[700];
-    final attachmentHeaderColor =
-        isDarkMode ? Colors.grey[400] : Colors.grey[700];
-    final linearProgressIndicatorColor =
-        isDarkMode ? Colors.blue[300] : Colors.blueAccent;
+    final attachmentHeaderColor = isDarkMode ? Colors.grey[400] : Colors.grey[700];
+    final attachmentChipBackgroundColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
+    final attachmentChipLabelColor = isDarkMode ? Colors.grey[200] : Colors.black87;
+    final attachmentChipDeleteIconColor = isDarkMode ? Colors.red[300] : Colors.red[700];
+    final linearProgressIndicatorColor = isDarkMode ? Colors.blue[300] : Colors.blueAccent;
+    final appBarIconColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final appBarTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final sendIconColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
+    final popupMenuIconColor = isDarkMode ? Colors.grey[300] : Colors.black87;
+    final popupMenuBackgroundColor = isDarkMode ? Colors.grey[800] : Colors.white;
+    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
 
     return Scaffold(
-      backgroundColor: scaffoldBackgroundColor,
+      backgroundColor: isDarkMode ? const Color(0xFF121212) : Colors.white,
       appBar: AppBar(
-        backgroundColor: appBarBackgroundColor,
+        backgroundColor: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
         elevation: isDarkMode ? 0.5 : 1.0,
         leading: IconButton(
           icon: Icon(Icons.close, color: appBarIconColor),
@@ -825,11 +875,53 @@ void initState() {
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: popupMenuIconColor),
             color: popupMenuBackgroundColor,
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'save_draft') {
                 _saveDraft();
               } else if (value == 'discard_popup') {
-                _discardEmail();
+                if (_draftId != null) {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Hủy bản nháp này?'),
+                      content: const Text('Bản nháp sẽ bị xóa vĩnh viễn.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Hủy'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Xóa'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    try {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .collection('drafts')
+                          .doc(_draftId)
+                          .delete();
+                        if (mounted) {
+                          Navigator.pop(context, {'draftDeleted': true, 'draftId': _draftId});
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Lỗi xóa bản nháp: $e')),
+                        );
+                      }
+                    }
+                  }
+                } else {
+                  Navigator.pop(context);
+                }
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -842,8 +934,7 @@ void initState() {
                 value: 'discard_popup',
                 child:
                     Text('Hủy bỏ', style: TextStyle(color: popupMenuTextColor)),
-              ),
-            ],
+              ),            ],
           ),
         ],
       ),
