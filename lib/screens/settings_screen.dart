@@ -3,11 +3,8 @@ import 'package:flutter/material.dart';
 import 'profile_screen.dart'; // Dẫn đến ProfileScreen
 import 'change_password_screen.dart'; // Dẫn đến ChangePasswordScreen
 import 'notification_settings_screen.dart';
+import 'display_settings_screen.dart';
 // import 'two_fa_screen.dart'; // Bạn sẽ tạo màn hình này sau nếu cần
-// import 'notification_settings_screen.dart';
-// import 'display_settings_screen.dart';
-// import 'auto_answer_settings_screen.dart';
-// import 'label_management_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -85,8 +82,7 @@ class SettingsScreen extends StatelessWidget {
                 MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()),
               );
             },
-          ),
-          const Divider(height: 1, color: Color(0xFF444746)),
+          ),          const Divider(height: 1, color: Color(0xFF444746)),
           ListTile(
             leading: Icon(
               Icons.palette_outlined,
@@ -96,34 +92,10 @@ class SettingsScreen extends StatelessWidget {
             subtitle: Text('Chủ đề, font chữ', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFB0B3B8) : Colors.grey[800])),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Cài đặt Hiển thị")));
-            },
-          ),
-          const Divider(height: 1, color: Color(0xFF444746)),
-          ListTile(
-            leading: Icon(
-              Icons.reply_all_outlined,
-              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
-            ),
-            title: Text('Chế độ tự động trả lời', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
-            onTap: () {
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => const AutoAnswerSettingsScreen()));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Cài đặt Tự động trả lời")));
-            },
-          ),
-          const Divider(height: 1, color: Color(0xFF444746)),
-          ListTile(
-            leading: Icon(
-              Icons.label_outline,
-              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
-            ),
-            title: Text('Quản lý nhãn', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
-            onTap: () {
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => const LabelManagementScreen()));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Quản lý nhãn")));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()),
+              );
             },
           ),
         ],

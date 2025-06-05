@@ -135,19 +135,18 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
               ),
             ),
             ListTile(
-              title: Text('Editor Font Family', style: TextStyle(color: primaryTextColor)),
-              trailing: DropdownButton<String>(
+              title: Text('Editor Font Family', style: TextStyle(color: primaryTextColor)),              trailing: DropdownButton<String>(
                 value: _selectedEditorFont,
                 hint: Text('Default', style: TextStyle(color: dropdownHintColor)),
                 focusColor: Colors.transparent, // Keep transparent or theme appropriately
                 dropdownColor: dropdownBackgroundColor, // Themed dropdown background
                 iconEnabledColor: dropdownIconColor, // Themed icon color
                 style: TextStyle(color: dropdownTextColor), // Text style for items
-                items: <String>['Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Courier New', 'Times New Roman']
+                items: <String>['Arial', 'Roboto', 'TimesNewRoman']
                     .map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value, style: TextStyle(color: dropdownTextColor)), // Ensure item text color is themed
+                    child: Text(value, style: TextStyle(fontFamily: value, color: dropdownTextColor)), // Ensure item text color is themed and font is applied
                   );
                 }).toList(),
                 onChanged: (String? newValue) {

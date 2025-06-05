@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 // Web specific imports - conditional import
 import 'dart:html' as html show document, AnchorElement;
 // Make sure these paths are correct for your project structure
@@ -34,7 +35,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   // For fetched sender details
   String? _fetchedSenderDisplayNameForDetail;
   String? _fetchedSenderAvatarUrlForDetail;
-  String _senderInitialLetterForDetail = '?';
+  // String _senderInitialLetterForDetail = '?'; // REMOVED
   bool _isLoadingSenderDetailsForDetail = true;
   
   // For fetched recipient details (for Sent view)
@@ -51,17 +52,35 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     _currentUser = FirebaseAuth.instance.currentUser;
 
     // Initialize local star and read status based on current user and email data
-    if (_currentUser != null) {
-      final emailLabelsMap = widget.email['emailLabels'] as Map<String, dynamic>?;
-      final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
-      _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
-
-      final emailIsReadByMap = widget.email['emailIsReadBy'] as Map<String, dynamic>?;
-      _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
-    } else {
-      _isStarredLocally = false;
-      _isReadLocally = false; // Default if no user
+    // Trong initState() của EmailDetailScreen
+if (_currentUser != null) {
+  Map<String, dynamic>? emailLabelsMap;
+  if (widget.email['emailLabels'] != null) {
+    try {
+      // Cố gắng ép kiểu một cách an toàn
+      emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels']);
+    } catch (e) {
+      print("Error casting emailLabels: $e. Value: ${widget.email['emailLabels']}");
+      emailLabelsMap = null; // Hoặc xử lý mặc định
     }
+  }
+  final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
+  _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
+
+  Map<String, dynamic>? emailIsReadByMap;
+  if (widget.email['emailIsReadBy'] != null) {
+    try {
+      emailIsReadByMap = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
+    } catch (e) {
+      print("Error casting emailIsReadBy: $e. Value: ${widget.email['emailIsReadBy']}");
+      emailIsReadByMap = null; // Hoặc xử lý mặc định
+    }
+  }
+  _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
+} else {
+  _isStarredLocally = false;
+  _isReadLocally = false;
+}
 
     _fetchSenderDetailsForDetailScreen();
 
@@ -90,32 +109,55 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                     };
                   });
                 }
-              })
-              .catchError((error) {
+              })              .catchError((error) {
                 print("Error marking email as read in Firestore: $error");
                 return null;
               });
+          _emailDataWasUpdated = true;
         }
       });
     }
   }
-
   Future<void> _fetchSenderDetailsForDetailScreen() async {
     if (!mounted) return;
     setState(() {
       _isLoadingSenderDetailsForDetail = true;
     });
 
-    String? senderId = widget.email['senderId'] as String?;
-    String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
-                                 widget.email['senderEmail'] as String? ??
-                                 widget.email['from'] as String? ??
-                                 'Không rõ';
-    String fallbackInitial = fallbackDisplayName.isNotEmpty && fallbackDisplayName != 'Không rõ'
-                             ? fallbackDisplayName[0].toUpperCase()
-                             : '?';
-    String? fallbackAvatarUrl = widget.email['senderAvatarUrl'] as String?;
+    // If it's a sent email, the "sender" is the current user.
+    if (widget.isSentView == true && _currentUser != null) {
+        // Attempt to get more details from Firestore if available for current user
+        try {
+            DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).get();
+            if (mounted && userDoc.exists) {
+                final data = userDoc.data() as Map<String, dynamic>;
+                _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? _currentUser!.displayName ?? _currentUser!.email ?? "Bạn";
+                _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String? ?? _currentUser!.photoURL;
+            } else {
+                _fetchedSenderDisplayNameForDetail = _currentUser!.displayName ?? _currentUser!.email ?? "Bạn";
+                _fetchedSenderAvatarUrlForDetail = _currentUser!.photoURL;
+            }
+        } catch (e) {
+            print("Error fetching current user details for Sent view in DetailScreen: $e");
+            _fetchedSenderDisplayNameForDetail = _currentUser!.displayName ?? _currentUser!.email ?? "Bạn";
+            _fetchedSenderAvatarUrlForDetail = _currentUser!.photoURL;
+        }
+         if (mounted) {
+            setState(() {
+                _isLoadingSenderDetailsForDetail = false;
+            });
+        }
+        return; // Early return for sent view
+    }
 
+
+    String? senderId = widget.email['senderId'] as String?;
+    String? senderEmail = widget.email['senderEmail'] as String? ?? widget.email['from'] as String?;
+    String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
+                                 senderEmail ??
+                                 'Không rõ';
+
+    // Try to fetch by senderId first
     if (senderId != null && senderId.isNotEmpty) {
       try {
         DocumentSnapshot senderDoc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
@@ -123,25 +165,39 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           final data = senderDoc.data() as Map<String, dynamic>;
           _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
           _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
-          _senderInitialLetterForDetail = (_fetchedSenderDisplayNameForDetail != null && _fetchedSenderDisplayNameForDetail!.isNotEmpty)
-                               ? _fetchedSenderDisplayNameForDetail![0].toUpperCase()
-                               : fallbackInitial;
-        } else {
+        } else { // senderDoc does not exist or not mounted
           _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-          _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
-          _senderInitialLetterForDetail = fallbackInitial;
+          _fetchedSenderAvatarUrlForDetail = null; // No specific avatar if sender not found by ID
         }
       } catch (e) {
-        print('Error fetching sender details for EmailDetailScreen (email ID ${widget.email['id']}, senderId $senderId): $e');
+        print('Error fetching sender details by ID for EmailDetailScreen: $e');
         _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-        _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
-        _senderInitialLetterForDetail = fallbackInitial;
+        _fetchedSenderAvatarUrlForDetail = null;
       }
-    } else {
-      print('No senderId found in email document (email ID ${widget.email['id']}). Using fallback display info.');
+    } else if (senderEmail != null && senderEmail.isNotEmpty) { // If no senderId, try by email
+      try {
+        QuerySnapshot senderQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: senderEmail)
+            .limit(1)
+            .get();
+        if (mounted && senderQuery.docs.isNotEmpty) {
+          final senderDoc = senderQuery.docs.first;
+          final data = senderDoc.data() as Map<String, dynamic>;
+          _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
+          _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
+        } else { // No user found by email
+          _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
+          _fetchedSenderAvatarUrlForDetail = null;
+        }
+      } catch (e) {
+        print('Error fetching sender details by email for EmailDetailScreen: $e');
+        _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
+        _fetchedSenderAvatarUrlForDetail = null;
+      }
+    } else { // No senderId and no senderEmail
       _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-      _fetchedSenderAvatarUrlForDetail = fallbackAvatarUrl;
-      _senderInitialLetterForDetail = fallbackInitial;
+      _fetchedSenderAvatarUrlForDetail = null;
     }
 
     if (mounted) {
@@ -150,7 +206,6 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       });
     }
   }
-
   Future<void> _fetchRecipientAvatarForSentView() async {
     if (!mounted || widget.isSentView != true) return;
 
@@ -161,29 +216,29 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     }
 
     String? fetchedUrl;
-    final List<dynamic>? recipientIds = widget.email['recipientIds'] as List<dynamic>?;
+    final List<dynamic>? toRecipients = widget.email['toRecipients'] as List<dynamic>?;
 
-    if (recipientIds != null && recipientIds.isNotEmpty) {
-      final String firstRecipientId = recipientIds.first.toString();
+    if (toRecipients != null && toRecipients.isNotEmpty) {
+      final String firstRecipientEmail = toRecipients.first.toString();
       try {
-        print("EmailDetailScreen (Sent View): Fetching avatar for recipient ID: $firstRecipientId");
-        DocumentSnapshot recipientDoc = await FirebaseFirestore.instance
+        print("EmailDetailScreen (Sent View): Fetching avatar for recipient email: $firstRecipientEmail");
+        QuerySnapshot userQuery = await FirebaseFirestore.instance
             .collection('users')
-            .doc(firstRecipientId)
+            .where('email', isEqualTo: firstRecipientEmail)
+            .limit(1)
             .get();
         
-        if (recipientDoc.exists) {
-          final data = recipientDoc.data() as Map<String, dynamic>;
+        if (userQuery.docs.isNotEmpty) {
+          final data = userQuery.docs.first.data() as Map<String, dynamic>;
           fetchedUrl = data['avatarUrl'] as String?;
-          print("EmailDetailScreen (Sent View): Fetched recipient avatar URL: $fetchedUrl for ID: $firstRecipientId");
         } else {
-          print("EmailDetailScreen (Sent View): Recipient document not found for ID: $firstRecipientId");
+          print("EmailDetailScreen (Sent View): Recipient not found for email: $firstRecipientEmail");
         }
       } catch (e) {
-        print('Error fetching recipient avatar for ID $firstRecipientId: $e');
+        print('Error fetching recipient avatar for email $firstRecipientEmail: $e');
       }
     } else {
-      print("EmailDetailScreen (Sent View): No recipient IDs found in email data.");
+      print("EmailDetailScreen (Sent View): No recipient emails found in email data.");
     }
 
     if (mounted) {
@@ -247,15 +302,28 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           .doc(widget.email['id'])
           .update({'emailIsReadBy.${_currentUser!.uid}': newReadStatus});
 
-      if (mounted) {
-        setState(() {
-          _isReadLocally = newReadStatus;
-          widget.email['emailIsReadBy'] = {
-            ...widget.email['emailIsReadBy'] ?? {},
-            _currentUser!.uid: newReadStatus,
-          };
-        });
+      // ...
+if (mounted) {
+  setState(() {
+    _isReadLocally = newReadStatus;
+    // Đảm bảo kiểu dữ liệu khi cập nhật local email data
+    Map<String, dynamic> currentEmailIsReadBy = {};
+    if (widget.email['emailIsReadBy'] != null) {
+      try {
+        currentEmailIsReadBy = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
+      } catch (e) {
+        // Xử lý nếu không thể ép kiểu, có thể khởi tạo map rỗng
+        print("Warning: Could not cast widget.email['emailIsReadBy'] to Map<String, dynamic>");
       }
+    }
+    widget.email['emailIsReadBy'] = {
+      ...currentEmailIsReadBy, // Spread map đã được ép kiểu đúng
+      _currentUser!.uid: newReadStatus,
+    };
+    _emailDataWasUpdated = true; // Đặt cờ này ở đây sau khi cập nhật thành công
+  });
+}
+// 
     } catch (e) {
       print("Error updating read status: $e");
       if (mounted) {
@@ -275,36 +343,88 @@ Future<void> _deleteEmail() async {
     return;
   }
   final theme = Theme.of(context);
+  final bool isInTrash = widget.email['isTrashedBy']?.contains(_currentUser!.uid) == true;
 
   try {
     final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
     final doc = await docRef.get();
     if (!doc.exists) {
       print("Document does not exist");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Email không tồn tại'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.red[700] : Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       return;
-    }
-    print("Document data: ${doc.data()}");
+    }    if (isInTrash) {
+      // Permanent delete: remove user from isTrashedBy completely if all users have deleted it
+      final List<dynamic> currentTrashedBy = widget.email['isTrashedBy'] as List<dynamic>? ?? [];
+      if (currentTrashedBy.length <= 1) {
+        // If only current user is in trashedBy, delete the entire document
+        await docRef.delete();
+          if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Email đã được xóa vĩnh viễn'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          // Return special signal for permanent deletion
+          Navigator.pop(context, 'permanently_deleted');
+        }
+      } else {
+        // If multiple users in trashedBy, just remove current user
+        await docRef.update({
+          'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid])
+        });
+          if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Email đã được xóa vĩnh viễn'),
+              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          // Mark email as updated and go back
+          widget.email['isTrashedBy'] = (widget.email['isTrashedBy'] as List<dynamic>? ?? [])
+              .where((id) => id != _currentUser!.uid).toList();
+          _emailDataWasUpdated = true;
+          Navigator.pop(context, 'permanently_deleted');
+        }
+      }
+    } else {
+      // Move to trash: add to isTrashedBy array
+      await docRef.update({
+        'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
+      });
 
-    await docRef.update({
-      'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Email đã được chuyển vào thùng rác'),
-          backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
-        ),
-      );
-      Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Email đã được chuyển vào Thùng rác'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        // Mark email as updated and go back
+        widget.email['isTrashedBy'] = [...(widget.email['isTrashedBy'] as List<dynamic>? ?? []), _currentUser!.uid];
+        _emailDataWasUpdated = true;
+        Navigator.pop(context, widget.email);
+      }
     }
   } catch (e) {
     print("Error deleting email: $e");
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi xóa email: $e'),
-          backgroundColor: theme.colorScheme.error,
+          content: Text('Lỗi khi xóa email: $e'),
+          backgroundColor: theme.brightness == Brightness.dark ? Colors.red[700] : Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -576,22 +696,52 @@ Future<void> _deleteEmail() async {
     );
   }  @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_emailDataWasUpdated) {
-          Navigator.pop(context, widget.email); // Return the updated email data
-          return false; // Prevent default pop, as we've handled it
-        }
-        return true; // Allow default pop if no data was changed
-      },
-      child: _buildEmailDetailScaffold(context), // Original Scaffold UI moved to a new method
-    );
-  }
-
-  // This new method contains the entire Scaffold and its UI logic from your original build method
-  Widget _buildEmailDetailScaffold(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Check if email is in trash for current user only
+    final bool isInTrash = widget.email['isTrashedBy']?.contains(_currentUser?.uid) == true;
+
+    // Get email content for display
+    String emailBodyToDisplay;
+    bool hasRichContent;
+    bool isBodyPlaceholder = false; // Flag for body placeholder
+
+    final rawSubject = widget.email['subject'] as String? ?? '';
+    final bool isSubjectEmpty = rawSubject.trim().isEmpty;
+    final String displaySubject = isSubjectEmpty ? '(Không có tiêu đề)' : rawSubject;
+
+    if (widget.email['bodyDeltaJson'] != null) {
+      try {
+        final deltaJson = jsonDecode(widget.email['bodyDeltaJson'] as String);
+        final quillDocument = quill.Document.fromJson(deltaJson);
+        emailBodyToDisplay = quillDocument.toPlainText().trim();
+        if (emailBodyToDisplay.isEmpty) {
+          emailBodyToDisplay = '(Không có nội dung)';
+          isBodyPlaceholder = true;
+          hasRichContent = false; // Treat placeholder as not rich for simple display
+        } else {
+          hasRichContent = true;
+        }
+      } catch (e) {
+        print("Error parsing rich content: $e");
+        String plainBody = widget.email['body'] as String? ?? '';
+        emailBodyToDisplay = plainBody.trim();
+        if (emailBodyToDisplay.isEmpty) {
+          emailBodyToDisplay = '(Không có nội dung)';
+          isBodyPlaceholder = true;
+        }
+        hasRichContent = false;
+      }
+    } else {
+      String plainBody = widget.email['body'] as String? ?? widget.email['bodyPlainText'] as String? ?? '';
+      emailBodyToDisplay = plainBody.trim();
+      if (emailBodyToDisplay.isEmpty) {
+        emailBodyToDisplay = '(Không có nội dung)';
+        isBodyPlaceholder = true;
+      }
+      hasRichContent = false;
+    }
 
     // Get email data
     final Map<String, dynamic> email = widget.email;
@@ -618,7 +768,7 @@ Future<void> _deleteEmail() async {
     final bool isSentEmail = widget.isSentView == true;
     String senderDisplayNameToShow;
     String? senderAvatarUrlToShow;
-    String senderInitialToShow;
+    // String senderInitialToShow;
     String recipientDisplayToShow = '';
 
     if (isSentEmail) {
@@ -642,7 +792,7 @@ Future<void> _deleteEmail() async {
       }
       
       senderAvatarUrlToShow = _fetchedRecipientAvatarUrl; // Assuming this is fetched correctly
-      senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
+      // senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
     } else {
       // For received emails, show sender info
       if (_isLoadingSenderDetailsForDetail) {
@@ -658,7 +808,7 @@ Future<void> _deleteEmail() async {
                                   'Không rõ';
       }
       senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail ?? email['senderAvatarUrl'] as String?;
-      senderInitialToShow = _senderInitialLetterForDetail;
+      // senderInitialToShow = _senderInitialLetterForDetail;
     }
 
     // Recipients for meta details
@@ -676,8 +826,6 @@ Future<void> _deleteEmail() async {
         })
         .where((s) => s.isNotEmpty)
         .toList() ?? [];
-
-
     // Define colors based on theme
     final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[50];
     final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
@@ -688,14 +836,11 @@ Future<void> _deleteEmail() async {
     final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
     final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final subjectColor = isDarkMode ? Colors.grey[200] : Colors.black87;
-    final avatarBackgroundColor = isDarkMode ? Colors.blue[700] : Colors.blue[700];
-    final avatarTextColor = Colors.white;
     final senderNameColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     final timeColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     final metaDetailBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
     final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final bodyTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
     final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
@@ -706,112 +851,116 @@ Future<void> _deleteEmail() async {
       backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: appBarBackgroundColor,
-        elevation: isDarkMode ? 0.5 : 1.0,
-        leading: IconButton(
+        elevation: isDarkMode ? 0.5 : 1.0,        leading: IconButton(
           icon: Icon(Icons.arrow_back, color: appBarIconColor),
           onPressed: () {
-            if (_emailDataWasUpdated) {
-              Navigator.pop(context, widget.email);
-            } else {
-              Navigator.pop(context);
-            }
+            Navigator.pop(context, _emailDataWasUpdated ? widget.email : null);
           },
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isStarredLocally ? Icons.star : Icons.star_border,
-              color: _isStarredLocally ? starColor : unstarColor,
-              size: 20,
+        ),actions: [
+          if (!isInTrash) ...[
+            IconButton(
+              icon: Icon(
+                _isStarredLocally ? Icons.star : Icons.star_border,
+                color: _isStarredLocally ? starColor : unstarColor,
+                size: 20,
+              ),
+              onPressed: _toggleStarStatus,
+              tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
             ),
-            onPressed: _toggleStarStatus,
-            tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
-          ),
-          IconButton(
-            icon: const Icon(Icons.label_outline),
-            tooltip: 'Gán nhãn',
-            onPressed: _assignLabels,
-            color: appBarIconColor,
-          ),
+            IconButton(
+              icon: const Icon(Icons.label_outline),
+              tooltip: 'Gán nhãn',
+              onPressed: _assignLabels,
+              color: appBarIconColor,
+            ),
+          ],
+          if (isInTrash) ...[
+            IconButton(
+              icon: const Icon(Icons.restore_from_trash_outlined),
+              tooltip: 'Khôi phục',
+              onPressed: _restoreFromTrash,
+              color: appBarIconColor,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            tooltip: 'Chuyển vào Thùng rác',
+            tooltip: isInTrash ? 'Xóa vĩnh viễn' : 'Chuyển vào Thùng rác',
             onPressed: _deleteEmail,
             color: appBarIconColor,
           ),
-          IconButton(
-            icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined),
-            tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
-            onPressed: _toggleReadStatus,
-            color: appBarIconColor,
-          ),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: popupMenuIconColor),
-            color: popupMenuBackgroundColor,
-            onSelected: (value) {
-              if (value == 'assign_labels') _assignLabels();
-              else if (value == 'move_to') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Di chuyển đến... (chưa triển khai)'),
-                    backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
-                    behavior: SnackBarBehavior.floating,
+          if (!isInTrash) ...[
+            IconButton(
+              icon: Icon(_isReadLocally ? Icons.mark_email_unread_outlined : Icons.drafts_outlined),
+              tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
+              onPressed: _toggleReadStatus,
+              color: appBarIconColor,
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: popupMenuIconColor),
+              color: popupMenuBackgroundColor,
+              onSelected: (value) {
+                if (value == 'assign_labels') _assignLabels();
+                else if (value == 'move_to') {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Di chuyển đến... (chưa triển khai)'),
+                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến', style: TextStyle(color: popupMenuTextColor))),
+                const PopupMenuDivider(),
+                PopupMenuItem<String>( 
+                  onTap: _toggleStarStatus,
+                  child: Row(
+                    children: [
+                      Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? starColor : unstarColor),
+                      const SizedBox(width: 8),
+                      Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao', style: TextStyle(color: popupMenuTextColor)),
+                    ],
                   ),
-                );
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến', style: TextStyle(color: popupMenuTextColor))),
-              const PopupMenuDivider(),
-              PopupMenuItem<String>( 
-                onTap: _toggleStarStatus,
-                child: Row(
-                  children: [
-                    Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? starColor : unstarColor),
-                    const SizedBox(width: 8),
-                    Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao', style: TextStyle(color: popupMenuTextColor)),
-                  ],
                 ),
-              ),
-              PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn', style: TextStyle(color: popupMenuTextColor))),
-            ],
-          ),
+                PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn', style: TextStyle(color: popupMenuTextColor))),
+              ],
+            ),
+          ],
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
+      body: SingleChildScrollView(
+        child: Column(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    email['subject'] ?? '(Không có tiêu đề)',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: subjectColor),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      displaySubject, // Use displaySubject here
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                        color: subjectColor,
+                        fontStyle: isSubjectEmpty ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 20),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
-                  backgroundColor: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
-                      ? Colors.transparent // Transparent if network image is shown
-                      : avatarBackgroundColor, // Background color for default asset or initials
+                  radius: 22,
                   backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
                       ? NetworkImage(senderAvatarUrlToShow)
-                      : const AssetImage('assets/images/default_avatar.png'), // Fallback to default asset
-                  child: (senderAvatarUrlToShow == null || senderAvatarUrlToShow.isEmpty)
-                      // Show initials if network avatar is not available (displayed on top of default asset image)
-                      ? Text(
-                          senderInitialToShow,
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: avatarTextColor)
-                        )
-                      : null, // No child if network image is successfully loaded
-                  radius: 22,
+                      : const AssetImage('assets/images/default_avatar.png'),
+                  child: null, // Always null to prevent initial over asset
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -873,9 +1022,22 @@ Future<void> _deleteEmail() async {
                 ),
               ),
             Divider(height: 32, color: dividerColor),
-            SelectableText( 
-              email['body'] ?? email['bodyContent'] ?? '(Không có nội dung)',
-              style: TextStyle(fontSize: 15, color: bodyTextColor, height: 1.5),
+            // Email body section
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 0),
+              child: (hasRichContent && !isBodyPlaceholder && widget.email['bodyDeltaJson'] != null)
+                  ? _buildRichEmailContent(widget.email['bodyDeltaJson'] as String, isDarkMode)
+                  : SelectableText(
+                      emailBodyToDisplay,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isBodyPlaceholder
+                            ? (isDarkMode ? Colors.grey[500] : Colors.grey[600]) // Lighter color for placeholder
+                            : (isDarkMode ? Colors.grey[200] : Colors.black87),
+                        height: 1.5,
+                        fontStyle: isBodyPlaceholder ? FontStyle.italic : FontStyle.normal, // Italic for placeholder
+                      ),
+                    ),
             ),
             if (attachments.isNotEmpty)
               Padding(
@@ -1005,28 +1167,29 @@ Future<void> _deleteEmail() async {
                 buttonBackgroundColor: actionButtonBackgroundColor,
                 buttonForegroundColor: actionButtonForegroundColor,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ActionButton(
-                icon: Icons.reply_all_outlined,
-                label: "Trả lời tất cả",
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ComposeEmailScreen(
-                        replyOrForwardEmail: widget.email,
-                        composeMode: 'replyAll',
+            ),            const SizedBox(width: 10),
+            if (_shouldShowReplyAll()) ...[
+              Expanded(
+                child: ActionButton(
+                  icon: Icons.reply_all_outlined,
+                  label: "Trả lời tất cả",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ComposeEmailScreen(
+                          replyOrForwardEmail: widget.email,
+                          composeMode: 'replyAll',
+                        ),
                       ),
-                    ),
-                  );
-                },
-                buttonBackgroundColor: actionButtonBackgroundColor,
-                buttonForegroundColor: actionButtonForegroundColor,
+                    );
+                  },
+                  buttonBackgroundColor: actionButtonBackgroundColor,
+                  buttonForegroundColor: actionButtonForegroundColor,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: ActionButton(
                 icon: Icons.forward_outlined,
@@ -1050,6 +1213,54 @@ Future<void> _deleteEmail() async {
         ),
       ),
     );
+  }
+
+  Widget _buildRichEmailContent(String deltaJsonString, bool isDarkMode) {
+    try {
+      final deltaJson = jsonDecode(deltaJsonString);
+      final quillDocument = quill.Document.fromJson(deltaJson);
+      final quillController = quill.QuillController(
+        document: quillDocument,
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+
+      return Container(
+        constraints: const BoxConstraints(
+          minHeight: 100,
+        ),
+        child: quill.QuillEditor.basic(
+          configurations: quill.QuillEditorConfigurations(
+            controller: quillController,
+            autoFocus: false,
+            showCursor: false,
+            enableInteractiveSelection: true,
+            padding: EdgeInsets.zero,
+            customStyles: quill.DefaultStyles(
+              paragraph: quill.DefaultTextBlockStyle(
+                TextStyle(
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                  height: 1.5,
+                ),
+                const quill.VerticalSpacing(0, 8),
+                const quill.VerticalSpacing(0, 0),
+                null,
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Error rendering rich content: $e");
+      return SelectableText(
+        "Error loading rich content",
+        style: TextStyle(
+          fontSize: 16,
+          color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
   }
 
   IconData _getFileIcon(String fileName) {
@@ -1130,5 +1341,67 @@ Future<void> _deleteEmail() async {
       // If URL parsing fails, return a default name
       return 'attachment_${DateTime.now().millisecondsSinceEpoch}';
     }
+  }  bool _shouldShowReplyAll() {
+    // Không hiển thị nếu là Sent view
+    if (widget.isSentView == true) return false;
+    
+    final List<String> toRecipients = (widget.email['toRecipients'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+        
+    final List<String> ccRecipients = (widget.email['ccRecipients'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+    
+    // Tổng số người nhận (To + CC)
+    final int totalRecipients = toRecipients.length + ccRecipients.length;
+    
+    // Hiển thị nếu có nhiều hơn 1 người nhận
+    return totalRecipients > 1;
+  }  Future<void> _restoreFromTrash() async {
+    if (_currentUser == null || widget.email['id'] == null) {
+      return;
+    }
+    final theme = Theme.of(context);
+
+    try {
+      final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
+      
+      await docRef.update({
+        'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid])
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Email đã được khôi phục'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        // Update local email data and go back
+        widget.email['isTrashedBy'] = (widget.email['isTrashedBy'] as List<dynamic>? ?? [])
+            .where((id) => id != _currentUser!.uid).toList();
+        _emailDataWasUpdated = true;
+        Navigator.pop(context, widget.email);
+      }
+    } catch (e) {
+      print("Error restoring email: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khôi phục email: $e'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.red[700] : Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

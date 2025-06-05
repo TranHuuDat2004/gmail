@@ -11,10 +11,10 @@ dependencies:
     sdk: flutter
 
   image_picker: ^1.1.2 
-  file_picker: ^10.1.9 
+  file_picker: ^10.1.9
   pinput: ^4.0.0 
 
-
+  
   dio: ^5.4.0                    # For file download
   path_provider: ^2.1.2         # To get Downloads folder
   permission_handler: ^11.2.0   # For storage permissions
@@ -23,13 +23,18 @@ dependencies:
   shared_preferences: ^2.2.2
   # Các gói khác
   http: ^1.2.0
-  intl: ^0.20.2
+  intl: ^0.19.0
   firebase_core: ^3.13.1 # Added firebase_core
   firebase_auth: ^5.5.4
   cloud_firestore: ^5.6.8
   firebase_app_check: ^0.3.2+6
-  firebase_storage:
-  provider: ^6.1.5
+  firebase_storage: ^12.2.1 # Ensure you have a version specified
+  provider: ^6.1.5  
+  flutter_quill: ^9.3.10
+  flutter_quill_extensions: ^9.3.10
+  emoji_picker_flutter: ^3.1.0
+  vsc_quill_delta_to_html: ^1.0.5
+  flutter_widget_from_html_core: ^0.14.11
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -42,3 +47,34 @@ flutter:
     - assets/icons/
     - assets/fonts/
     - assets/images/default_avatar.png
+
+  fonts:
+    - family: Arial
+      fonts:
+        - asset: assets/fonts/arial.TTF
+        - asset: assets/fonts/arialbold.TTF
+          weight: 700
+        - asset: assets/fonts/arialitalic.TTF
+          style: italic
+        - asset: assets/fonts/arialbolditalic.TTF
+          weight: 700
+          style: italic
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Roboto-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+    - family: TimesNewRoman
+      fonts:
+        - asset: assets/fonts/timesnewroman.ttf
+        - asset: assets/fonts/timesnewromanbold.ttf
+          weight: 700
+        - asset: assets/fonts/timesnewromanitalic.ttf
+          style: italic
+        - asset: assets/fonts/timesnewromanbolditalic.ttf
+          weight: 700
+          style: italic
