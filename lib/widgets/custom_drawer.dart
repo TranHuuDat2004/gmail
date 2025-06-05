@@ -5,6 +5,8 @@ import 'package:gmail/screens/label_screen.dart'; // Corrected import path
 import 'package:gmail/screens/display_settings_screen.dart'; 
 import 'package:gmail/screens/auto_answer_mode_screen.dart';
 import 'package:gmail/screens/login.dart'; // Thêm import cho LoginPage
+import 'package:cloud_firestore/cloud_firestore.dart'; // Thêm import
+
 
 class CustomDrawer extends StatefulWidget {
   final String selectedLabel;
@@ -173,12 +175,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 Navigator.pop(context); // Close the drawer first
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => LabelManagementScreen(
-                      currentLabels: widget.userLabels, 
-                      onLabelsUpdated: widget.onUserLabelsUpdated, 
-                    ),
-                  ),
+                   MaterialPageRoute(builder: (context) => const LabelManagementScreen()), // Điều hướng đến màn hình quản lý
+                  
                 );
               },
             ),

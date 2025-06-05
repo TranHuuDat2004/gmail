@@ -30,7 +30,7 @@ class _GmailUIState extends State<GmailUI> {
   List<Map<String, dynamic>> _emails = [];
   bool _isLoadingEmails = true;
 
-  final List<String> userLabels = ["Work", "Family"];
+  final List<String> userLabels = [];
 
   final TextEditingController _searchController = TextEditingController();
 
