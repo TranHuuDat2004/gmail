@@ -854,13 +854,9 @@ Future<void> _deleteEmail() async {
         elevation: isDarkMode ? 0.5 : 1.0,        leading: IconButton(
           icon: Icon(Icons.arrow_back, color: appBarIconColor),
           onPressed: () {
-            if (_emailDataWasUpdated) {
-              Navigator.pop(context, widget.email);
-            } else {
-              Navigator.pop(context);
-            }
+            Navigator.pop(context, _emailDataWasUpdated ? widget.email : null);
           },
-        ),        actions: [
+        ),actions: [
           if (!isInTrash) ...[
             IconButton(
               icon: Icon(
@@ -1403,5 +1399,9 @@ Future<void> _deleteEmail() async {
         );
       }
     }
+  }
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

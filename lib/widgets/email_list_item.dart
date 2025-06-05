@@ -400,7 +400,27 @@ class _EmailListItemState extends State<EmailListItem> {
                 setState(() {
                   _isStarred = !_isStarred;
                 });
+                
+                // Cập nhật trạng thái starred trong email data ngay lập tức
                 widget.email['starred'] = _isStarred;
+                
+                // Nếu email có emailLabels, cập nhật luôn trong map
+                final currentUser = _auth.currentUser;
+                if (currentUser != null) {
+                  Map<String, dynamic> emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels'] ?? {});
+                  List<dynamic> currentUserLabels = List<dynamic>.from(emailLabelsMap[currentUser.uid] ?? []);
+                  
+                  if (_isStarred) {
+                    if (!currentUserLabels.contains('Starred')) {
+                      currentUserLabels.add('Starred');
+                    }
+                  } else {
+                    currentUserLabels.remove('Starred');
+                  }
+                  
+                  emailLabelsMap[currentUser.uid] = currentUserLabels;
+                  widget.email['emailLabels'] = emailLabelsMap;
+                }
                 
                 // Gọi callback để parent widget xử lý
                 await widget.onStarPressed(_isStarred);

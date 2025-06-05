@@ -635,25 +635,31 @@ class _GmailUIState extends State<GmailUI> {
                                     ),
                                   ),
                                 );                              // If result is a Map (email was updated in detail screen), refresh the list
-                              if (result is Map<String, dynamic>) {
+                              if (result is Map<String, dynamic> && mounted) {
                                 // Update email in list and refresh current view if needed
-                                setState(() {
+                                final currentUser = _auth.currentUser;                                setState(() {
                                   final emailIndex = _emails.indexWhere((e) => e['id'] == result['id']);
                                   if (emailIndex != -1) {
                                     _emails[emailIndex] = result;
+                                    
+                                    // Cập nhật trạng thái isUnread dựa trên emailIsReadBy
+                                    final emailIsReadBy = result['emailIsReadBy'] as Map<String, dynamic>?;
+                                    if (currentUser != null) {
+                                      _emails[emailIndex]['isUnread'] = !(emailIsReadBy?[currentUser.uid] ?? false);
+                                    }
                                   }
-                                  // If email was deleted (moved to trash), remove it from current view
+                                  // If email was moved to trash, remove it from current view (except Trash view)
                                   final isTrashedBy = List<String>.from(result['isTrashedBy'] ?? []);
                                   if (currentUser?.uid != null && isTrashedBy.contains(currentUser!.uid) && selectedLabel != "Trash") {
                                     _emails.removeWhere((e) => e['id'] == result['id']);
                                   }
-                                  // If email was permanently deleted from trash or restored, remove it from Trash view
+                                  // If email was restored from trash, remove it from Trash view
                                   if (selectedLabel == "Trash" && currentUser?.uid != null && 
                                       !isTrashedBy.contains(currentUser!.uid)) {
                                     _emails.removeWhere((e) => e['id'] == result['id']);
                                   }
                                 });
-                              } else if (result == 'permanently_deleted') {
+                              } else if (result == 'permanently_deleted' && mounted) {
                                 // Handle permanent deletion - remove from list immediately
                                 setState(() {
                                   _emails.removeWhere((e) => e['id'] == email['id']);
