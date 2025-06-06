@@ -656,21 +656,24 @@ Future<void> _deleteEmail() async {
     );
   }  // File viewing and downloading methods
   Future<void> _viewPdfAttachment(String attachmentUrl, String fileName) async {
+    final theme = Theme.of(context); // Get theme for SnackBar & Dialog
+    final isDarkMode = theme.brightness == Brightness.dark;
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     if (extension == 'pdf') {
       try {
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => const Center(child: CircularProgressIndicator()),
-        );        if (kIsWeb) {
+        );
+        if (kIsWeb) {
           // For web - fetch PDF data and show in WebPdfViewerScreen
           final response = await Dio().get(
             attachmentUrl,
             options: Options(responseType: ResponseType.bytes),
           );
-          
+
           if (mounted) {
             Navigator.pop(context); // Close loading dialog
             Navigator.push(
@@ -693,8 +696,8 @@ Future<void> _deleteEmail() async {
                 builder: (context) => Scaffold(
                   appBar: AppBar(
                     title: Text(fileName),
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF202124) : Colors.white,
-                    iconTheme: IconThemeData(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[400] : Colors.black54),
+                    backgroundColor: isDarkMode ? const Color(0xFF202124) : Colors.white,
+                    iconTheme: IconThemeData(color: isDarkMode ? Colors.grey[400] : Colors.black54),
                   ),
                   body: SfPdfViewer.network(attachmentUrl),
                 ),
@@ -709,20 +712,20 @@ Future<void> _deleteEmail() async {
         }
       }
     } else {
-      // For non-PDF files, fallback to download
-      await _downloadAttachment(attachmentUrl, fileName);
+      // For non-PDF files, fallback to download or other viewers
+      await _viewAttachment(attachmentUrl, fileName); // Call general view for other types
     }
   }
 
   Future<void> _viewAttachment(String attachmentUrl, String fileName) async {
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     // Check if it's PDF first
     if (extension == 'pdf') {
       await _viewPdfAttachment(attachmentUrl, fileName);
       return;
     }
-    
+
     // Check if file can be viewed directly in app
     if (_canViewInApp(extension)) {
       try {

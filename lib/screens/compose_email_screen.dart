@@ -13,6 +13,11 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:url_launcher/url_launcher.dart'; // Thêm import này
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // Đảm bảo bạn đã thêm package này
 
+// Conditional import for web PDF viewer
+import '../utils/web_pdf_utils_stub.dart'
+    if (dart.library.html) '../utils/web_pdf_utils_web.dart'
+    as web_pdf_utils;
+
 
 // Màn hình xem trước PDF cho Web
 class WebPdfViewerScreen extends StatefulWidget {
@@ -130,7 +135,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => WebPdfViewerScreen(pdfBytes: pdfData, fileName: fileName),
+              builder: (context) => web_pdf_utils.createWebPdfViewer(pdfData, fileName),
             ),
           );
         } else {
