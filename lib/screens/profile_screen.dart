@@ -7,6 +7,9 @@ import 'package:gmail/screens/change_password_screen.dart'; // Sửa đường d
 // THÊM IMPORT CHO MÀN HÌNH CÀI ĐẶT 2FA
 import 'package:gmail/screens/setup_2fa_screen.dart'; 
 import 'package:gmail/screens/display_settings_screen.dart'; // ADD THIS IMPORT
+import 'package:gmail/screens/label_screen.dart'; // ADD THIS IMPORT
+import 'package:gmail/screens/notification_settings_screen.dart'; // ADD THIS IMPORT
+import 'package:gmail/screens/auto_answer_mode_screen.dart'; // ADD THIS IMPORT
 import 'package:pinput/pinput.dart'; // THÊM IMPORT CHO PINPUT
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -384,9 +387,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: _userPhoneNumber ?? "Add recovery phone",
                 onTap: null // THAY ĐỔI: Không cho phép onTap cho mục Phone
                 ),
-          ],
-        ),
+          ],        ),
         const SizedBox(height: 20),
+        Text(
+          "BẢO MẬT",
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: sectionTitleColor,
+          ),
+        ),
+        const SizedBox(height: 16),
         _buildInfoCard(
           context: context, // Pass context
           children: [
@@ -556,71 +567,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildSettingsContent(BuildContext context) { // Add context
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    final sectionTitleColor = isDarkMode ? Colors.grey[200] : Colors.grey[800];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Text(
-            "Cài đặt ứng dụng",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w500,
-              color: sectionTitleColor,
-            ),
-          ),
-        ),
+        const SizedBox(height: 30),
+        
+        // Main Settings Section
         _buildInfoCard(
-          context: context, // Pass context
+          context: context,
           children: [
+            // Quản lý nhãn
             _buildSettingsListItem(
-              context: context, // Pass context
-              icon: Icons.notifications_outlined,
-              title: 'Thông báo',
-              subtitle: 'Cài đặt âm thanh, rung, ưu tiên',
+              context: context,
+              icon: Icons.label_outline,
+              title: "Quản lý nhãn",
+              subtitle: "Tạo và quản lý nhãn email",
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Mở Cài đặt Thông báo (chưa làm)")));
-              },
-            ),
-            _buildSettingsListItem(
-              context: context, // Pass context
-              icon: Icons.palette_outlined,
-              title: 'Hiển thị',
-              subtitle: 'Chủ đề, font chữ',
-              onTap: () {
-                // MODIFIED: Navigate to DisplaySettingsScreen
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const DisplaySettingsScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const LabelManagementScreen(),
+                  ),
                 );
               },
             ),
+            
+            Divider(color: isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+              // Thông báo
             _buildSettingsListItem(
-              context: context, // Pass context
-              icon: Icons.reply_all_outlined,
-              title: 'Chế độ tự động trả lời',
-              subtitle:
-                  'Thiết lập trả lời tự động khi bạn vắng mặt', // Thêm mô tả rõ hơn
+              context: context,
+              icon: Icons.notifications_outlined,
+              title: "Thông báo",
+              subtitle: "Cài đặt thông báo email",
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Mở Cài đặt Tự động trả lời (chưa làm)")));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationSettingsScreen(),
+                  ),
+                );
               },
             ),
+            
+            Divider(color: isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+            
+            // Chế độ tự động trả lời
             _buildSettingsListItem(
-              context: context, // Pass context
-              icon: Icons.label_outline,
-              title: 'Quản lý nhãn',
-              subtitle: 'Tạo, sửa, xóa các nhãn email', // Thêm mô tả rõ hơn
+              context: context,
+              icon: Icons.reply_all,
+              title: "Chế độ tự động trả lời",
+              subtitle: "Thiết lập tin nhắn tự động",
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Mở Quản lý nhãn (chưa làm)")));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AutoAnswerModeScreen(),
+                  ),
+                );
+              },
+            ),
+            
+            Divider(color: isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+            
+            // Hiển thị
+            _buildSettingsListItem(
+              context: context,
+              icon: Icons.palette_outlined,
+              title: "Hiển thị",
+              subtitle: "Chủ đề và font chữ",
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DisplaySettingsScreen(),
+                  ),
+                );
               },
             ),
           ],
         ),
+        
         const SizedBox(height: 30),
       ],
     );

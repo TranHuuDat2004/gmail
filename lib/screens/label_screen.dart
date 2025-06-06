@@ -42,8 +42,17 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
   }
 
   Future<void> _addNewLabel(String? selectedParentLabel, bool nestUnderParent) async {
-    if (_newLabelController.text.trim().isEmpty || _currentUser == null) {
-      return;
+    if (_newLabelController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Vui lòng nhập tên nhãn.")),
+        );
+      }
+      return; // Dừng hàm tại đây
+    }
+
+    if (_currentUser == null) {
+      return; // Giữ lại kiểm tra user
     }
     String newEditableNamePart = _newLabelController.text.trim();
 
@@ -103,16 +112,22 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
       }
     }
   }
-
   Future<void> _editLabel(String labelId, String currentFullName, String currentEditablePart, String parentPrefix) async {
     if (_currentUser == null || !mounted) return;
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
     final TextEditingController editController = TextEditingController(text: currentEditablePart);
 
     final newEditableName = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('Sửa tên nhãn'),
+        backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
+          'Sửa tên nhãn',
+          style: TextStyle(
+            color: isDarkMode ? Colors.grey[200] : Colors.black87,
+          ),
+        ),
         contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0.0),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -123,23 +138,60 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
                 padding: const EdgeInsets.only(bottom: 4.0),
                 child: Text(
                   "Sửa tên cho nhãn con trong: \"${parentPrefix.substring(0, parentPrefix.length -1)}\"",
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: 12, 
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
                 ),
               ),
             TextField(
               controller: editController,
               autofocus: true,
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[200] : Colors.black87,
+              ),
               decoration: InputDecoration(
                 hintText: "Tên nhãn mới",
-                border: const OutlineInputBorder(),
+                hintStyle: TextStyle(
+                  color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
+                ),
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: isDarkMode ? Colors.blue[400]! : Colors.blue[600]!,
+                  ),
+                ),
+                filled: true,
+                fillColor: isDarkMode ? const Color(0xFF3A3A3A) : Colors.grey[50],
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('HỦY')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext), 
+            child: Text(
+              'HỦY',
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isDarkMode ? Colors.blue[600] : Colors.blue[700],
+              foregroundColor: Colors.white,
+            ),
             onPressed: () {
               if (editController.text.trim().isNotEmpty && !editController.text.trim().contains('/')) {
                 Navigator.pop(dialogContext, editController.text.trim());
@@ -189,45 +241,6 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
         }
         await batch.commit();
 
-        // TODO (RẤT QUAN TRỌNG & PHỨC TẠP): Cập nhật tên nhãn trong tất cả các email
-        // Sử dụng Cloud Function cho việc này là tốt nhất.
-        // Client-side code (chỉ để minh họa, không khuyến khích cho nhiều email):
-        /*
-        if (_currentUser != null) {
-            QuerySnapshot emailSnapshot = await _firestore.collection('emails')
-                .where('labels.${_currentUser!.uid}', arrayContains: currentFullName)
-                .get();
-            WriteBatch emailBatch = _firestore.batch();
-            for (DocumentSnapshot doc in emailSnapshot.docs) {
-              emailBatch.update(doc.reference, {
-                  'labels.${_currentUser!.uid}': FieldValue.arrayRemove([currentFullName]),
-              });
-              emailBatch.update(doc.reference, {
-                  'labels.${_currentUser!.uid}': FieldValue.arrayUnion([newFullName]),
-              });
-            }
-            // Cập nhật cho các nhãn con nếu tên nhãn cha thay đổi
-            if (parentPrefix.isEmpty && currentFullName != newFullName) {
-                QuerySnapshot childrenSnapshot = await _userLabelsCollection
-                    .where('name', isGreaterThanOrEqualTo: "$newFullName/") // Dùng newFullName để lấy tên con mới
-                    .where('name', isLessThan: "$newFullName0")
-                    .get();
-                for (var childLabelDoc in childrenSnapshot.docs) {
-                    String oldChildLabelFullName = childLabelDoc['name']!.toString().replaceFirst("$newFullName/", "$currentFullName/");
-                    QuerySnapshot childEmailSnapshot = await _firestore.collection('emails')
-                        .where('labels.${_currentUser!.uid}', arrayContains: oldChildLabelFullName)
-                        .get();
-                    for (DocumentSnapshot doc in childEmailSnapshot.docs) {
-                        emailBatch.update(doc.reference, {'labels.${_currentUser!.uid}': FieldValue.arrayRemove([oldChildLabelFullName])});
-                        emailBatch.update(doc.reference, {'labels.${_currentUser!.uid}': FieldValue.arrayUnion([childLabelDoc['name']])});
-                    }
-                }
-            }
-            await emailBatch.commit();
-            print("Updated labels in emails (client-side attempt).");
-        }
-        */
-
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã cập nhật nhãn.')));
       } catch (e) {
         print("Error editing label in Firestore: $e");
@@ -235,21 +248,45 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
       }
     }
   }
-
   Future<void> _deleteLabel(String labelId, String labelName) async {
     if (_currentUser == null || !mounted) return;
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
 
     final confirmDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text('Xóa nhãn "$labelName"?'),
-        content: const Text('Hành động này sẽ xóa nhãn này và tất cả các nhãn con của nó (nếu có). Các email sẽ không bị xóa, chỉ mất các nhãn này.'),
+        backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
+          'Xóa nhãn "$labelName"?',
+          style: TextStyle(
+            color: isDarkMode ? Colors.grey[200] : Colors.black87,
+          ),
+        ),
+        content: Text(
+          'Hành động này sẽ xóa nhãn này. Các email sẽ không bị xóa, chỉ mất các nhãn bị xoá này.',
+          style: TextStyle(
+            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('HỦY')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false), 
+            child: Text(
+              'HỦY',
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('XÓA', style: TextStyle(color: Colors.red)),
+            child: Text(
+              'XÓA', 
+              style: TextStyle(
+                color: isDarkMode ? Colors.red[400] : Colors.red[700],
+              ),
+            ),
           ),
         ],
       ),
@@ -275,23 +312,6 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
         }
         await batch.commit();
 
-        // TODO (RẤT QUAN TRỌNG & PHỨC TẠP): Cập nhật (xóa) các nhãn này khỏi tất cả các email
-        // Sử dụng Cloud Function cho việc này là tốt nhất.
-        // Client-side code (chỉ để minh họa, không khuyến khích cho nhiều email):
-        /*
-        if (_currentUser != null && labelsAffectedByDeletion.isNotEmpty) {
-            QuerySnapshot emailSnapshot = await _firestore.collection('emails')
-               .where('labels.${_currentUser!.uid}', arrayContainsAny: labelsAffectedByDeletion)
-               .get();
-            WriteBatch emailBatch = _firestore.batch();
-            for (DocumentSnapshot doc in emailSnapshot.docs) {
-              emailBatch.update(doc.reference, {'labels.${_currentUser!.uid}': FieldValue.arrayRemove(labelsAffectedByDeletion)});
-            }
-            await emailBatch.commit();
-            print("Removed labels from emails (client-side attempt).");
-        }
-        */
-
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa nhãn và các nhãn con (nếu có).')));
       } catch (e) {
         print("Error deleting label from Firestore: $e");
@@ -307,22 +327,32 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
     _newLabelFocusNode.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDarkMode ? const Color(0xFF121212) : Colors.grey[50],
       appBar: AppBar(
         title: const Text("Quản lý Nhãn"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.5,
-      ),
-      body: _currentUser == null
-          ? const Center(child: Text("Vui lòng đăng nhập để quản lý nhãn."))
-          : Column( // Bọc trong Column để thêm TextField ở trên
+        backgroundColor: isDarkMode ? const Color(0xFF202124) : Colors.white,
+        foregroundColor: isDarkMode ? Colors.grey[200] : Colors.black87,
+        elevation: isDarkMode ? 0.5 : 1.0,
+      ),      body: _currentUser == null
+          ? Center(
+              child: Text(
+                "Vui lòng đăng nhập để quản lý nhãn.",
+                style: TextStyle(
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  fontSize: 16,
+                ),
+              ),
+            )
+          : Column(
               children: [
-                Padding( // TextField để thêm nhãn nhanh (tùy chọn, có thể chỉ dùng FAB)
+                Container(
+                  color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
                   padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
                   child: Row(
                     children: [
@@ -330,12 +360,39 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
                         child: TextField(
                           controller: _newLabelController,
                           focusNode: _newLabelFocusNode,
+                           maxLength: 20,
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Tạo nhãn mới nhanh...',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+
+                            counterStyle: TextStyle(
+                              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(
+                                color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(
+                                color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(
+                                color: isDarkMode ? Colors.blue[400]! : Colors.blue[600]!,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[50],
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
-                          onSubmitted: (_) => _addNewLabel(null, false), // Thêm nhãn không lồng
+                          onSubmitted: (_) => _addNewLabel(null, false),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -343,31 +400,52 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
                         icon: const Icon(Icons.add_circle_outline),
                         tooltip: "Thêm nhãn",
                         onPressed: () => _addNewLabel(null, false),
-                        color: Theme.of(context).primaryColor,
+                        color: isDarkMode ? Colors.blue[400] : Colors.blue[600],
                       )
                     ],
                   ),
                 ),
-                const Divider(height:1),
+                Divider(
+                  height: 1,
+                  color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                ),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: _labelsStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) return Center(child: Text('Lỗi: ${snapshot.error}'));
-                      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                        return const Center(
-                          child: Text("Không có nhãn nào. Nhấn '+' ở dưới để tạo.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                    builder: (context, snapshot) {                      if (snapshot.hasError) return Center(
+                        child: Text(
+                          'Lỗi: ${snapshot.error}',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.red[400] : Colors.red[700],
+                          ),
+                        ),
+                      );
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Center(
+                          child: CircularProgressIndicator(
+                            color: isDarkMode ? Colors.blue[400] : Colors.blue[600],
                           ),
                         );
                       }
-
-                      final labels = snapshot.data!.docs;
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return Center(
+                          child: Text(
+                            "Không có nhãn nào. Nhấn '+' ở trên để tạo.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        );
+                      }                      final labels = snapshot.data!.docs;
                       return ListView.separated(
                         itemCount: labels.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 56),
+                        separatorBuilder: (context, index) => Divider(
+                          height: 1, 
+                          indent: 56,
+                          color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                        ),
                         itemBuilder: (context, index) {
                           final labelDoc = labels[index];
                           final labelData = labelDoc.data();
@@ -375,30 +453,56 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
                           List<String> parts = labelFullName.split('/');
                           String displayName = parts.last;
                           int depth = parts.length - 1;
-                          String parentPrefix = depth > 0 ? labelFullName.substring(0, labelFullName.lastIndexOf('/') + 1) : "";
-
-                          return ListTile(
-                            contentPadding: EdgeInsets.only(left: 16.0 + (depth * 24.0), right: 8.0),
-                            leading: Icon(
-                              depth > 0 ? Icons.subdirectory_arrow_right : Icons.label_outline,
-                              color: Colors.black54,
-                              size: 20,
-                            ),
-                            title: Text(displayName, style: const TextStyle(color: Colors.black87)),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey, size: 22),
-                                  tooltip: "Sửa tên",
-                                  onPressed: () => _editLabel(labelDoc.id, labelFullName, displayName, parentPrefix),
+                          String parentPrefix = depth > 0 ? labelFullName.substring(0, labelFullName.lastIndexOf('/') + 1) : "";                          return Container(
+                            color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
+                            child: ListTile(
+                              contentPadding: EdgeInsets.only(left: 16.0 + (depth * 24.0), right: 8.0),
+                              leading: Icon(
+                                depth > 0 ? Icons.subdirectory_arrow_right : Icons.label_outline,
+                                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                size: 20,
+                              ),
+                              title: Text(
+                                displayName, 
+                                style: TextStyle(
+                                  color: isDarkMode ? Colors.grey[200] : Colors.black87,
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
-                                  tooltip: "Xóa nhãn",
-                                  onPressed: () => _deleteLabel(labelDoc.id, labelFullName),
-                                ),
-                              ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [                                  IconButton(
+                                    icon: Icon(
+                                      Icons.open_in_new, 
+                                      color: isDarkMode ? Colors.green[400] : Colors.green[600], 
+                                      size: 22,
+                                    ),
+                                    tooltip: "Mở nhãn",
+                                    onPressed: () {
+                                      Navigator.pop(context, {'action': 'selectLabel', 'label': labelFullName});
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.edit_outlined, 
+                                      color: isDarkMode ? Colors.blue[400] : Colors.blue[600], 
+                                      size: 22,
+                                    ),
+                                    tooltip: "Sửa tên",
+                                    onPressed: () => _editLabel(labelDoc.id, labelFullName, displayName, parentPrefix),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete_outline, 
+                                      color: isDarkMode ? Colors.red[400] : Colors.red[600], 
+                                      size: 22,
+                                    ),
+                                    tooltip: "Xóa nhãn",
+                                    onPressed: () => _deleteLabel(labelDoc.id, labelFullName),
+                                  ),
+                                ],
+                              ),                              onTap: () {
+                                Navigator.pop(context, {'action': 'selectLabel', 'label': labelFullName});
+                              },
                             ),
                           );
                         },

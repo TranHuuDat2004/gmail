@@ -343,62 +343,42 @@ Future<void> _deleteEmail() async {
     return;
   }
   final theme = Theme.of(context);
-  final bool isInTrash = widget.email['isTrashedBy']?.contains(_currentUser!.uid) == true;
+  final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
+  final bool isInTrash = (widget.email['isTrashedBy'] as List<dynamic>?)?.contains(_currentUser!.uid) ?? false;
 
   try {
-    final docRef = FirebaseFirestore.instance.collection('emails').doc(widget.email['id']);
-    final doc = await docRef.get();
-    if (!doc.exists) {
-      print("Document does not exist");
+    if (isInTrash) {
+      // User is performing "Delete Permanently" for their view
+      await docRef.update({
+        'permanentlyDeletedBy': FieldValue.arrayUnion([_currentUser!.uid]),
+        'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid]) // Remove from trash view
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Email không tồn tại'),
-            backgroundColor: theme.brightness == Brightness.dark ? Colors.red[700] : Colors.red,
+            content: const Text('Email đã được bạn đánh dấu xóa vĩnh viễn.'),
+            backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
         );
-      }
-      return;
-    }    if (isInTrash) {
-      // Permanent delete: remove user from isTrashedBy completely if all users have deleted it
-      final List<dynamic> currentTrashedBy = widget.email['isTrashedBy'] as List<dynamic>? ?? [];
-      if (currentTrashedBy.length <= 1) {
-        // If only current user is in trashedBy, delete the entire document
-        await docRef.delete();
-          if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Email đã được xóa vĩnh viễn'),
-              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          // Return special signal for permanent deletion
-          Navigator.pop(context, 'permanently_deleted');
+
+        // Update local email data
+        List<dynamic> permanentlyDeletedByList = List<dynamic>.from(widget.email['permanentlyDeletedBy'] ?? []);
+        if (!permanentlyDeletedByList.contains(_currentUser!.uid)) {
+          permanentlyDeletedByList.add(_currentUser!.uid);
         }
-      } else {
-        // If multiple users in trashedBy, just remove current user
-        await docRef.update({
-          'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid])
-        });
-          if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Email đã được xóa vĩnh viễn'),
-              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          // Mark email as updated and go back
-          widget.email['isTrashedBy'] = (widget.email['isTrashedBy'] as List<dynamic>? ?? [])
-              .where((id) => id != _currentUser!.uid).toList();
-          _emailDataWasUpdated = true;
-          Navigator.pop(context, 'permanently_deleted');
-        }
+        widget.email['permanentlyDeletedBy'] = permanentlyDeletedByList;
+
+        List<dynamic> isTrashedByList = List<dynamic>.from(widget.email['isTrashedBy'] ?? []);
+        isTrashedByList.removeWhere((id) => id == _currentUser!.uid);
+        widget.email['isTrashedBy'] = isTrashedByList;
+        
+        _emailDataWasUpdated = true;
+        Navigator.pop(context, widget.email); // Or a specific result like 'marked_permanently_deleted' // REVERTED CHANGE
       }
     } else {
-      // Move to trash: add to isTrashedBy array
+      // Move to trash
       await docRef.update({
         'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
       });
@@ -411,18 +391,22 @@ Future<void> _deleteEmail() async {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        // Mark email as updated and go back
-        widget.email['isTrashedBy'] = [...(widget.email['isTrashedBy'] as List<dynamic>? ?? []), _currentUser!.uid];
+        // Update local email data
+        List<dynamic> isTrashedByList = List<dynamic>.from(widget.email['isTrashedBy'] ?? []);
+        if (!isTrashedByList.contains(_currentUser!.uid)) {
+          isTrashedByList.add(_currentUser!.uid);
+        }
+        widget.email['isTrashedBy'] = isTrashedByList;
         _emailDataWasUpdated = true;
         Navigator.pop(context, widget.email);
       }
     }
   } catch (e) {
-    print("Error deleting email: $e");
+    print("Error in _deleteEmail: $e");
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi khi xóa email: $e'),
+          content: Text('Lỗi khi xử lý email: $e'),
           backgroundColor: theme.brightness == Brightness.dark ? Colors.red[700] : Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -431,14 +415,126 @@ Future<void> _deleteEmail() async {
   }
 }
 
-  void _assignLabels() {
+  void _assignLabels() async {
+    if (_currentUser == null || widget.email['id'] == null) return;
     final theme = Theme.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Gán nhãn (chưa triển khai)'),
-        backgroundColor: theme.brightness == Brightness.dark ? Colors.orange[700] : Colors.orange,
-      ),
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final userId = _currentUser!.uid;
+    final emailId = widget.email['id'];
+    final emailRef = FirebaseFirestore.instance.collection('emails').doc(emailId);
+
+    // Lấy danh sách nhãn của user
+    final labelsSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('labels')
+        .orderBy('name')
+        .get();
+    final List<String> allLabels = labelsSnapshot.docs.map((doc) => doc['name'] as String).toList();
+
+    // Lấy nhãn hiện tại của email
+    Map<String, dynamic> emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels'] ?? {});
+    List<String> currentLabels = List<String>.from(emailLabelsMap[userId] ?? []);
+
+    List<String> selectedLabels = List<String>.from(currentLabels);
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) {
+        final dialogTheme = Theme.of(context);
+        final isDialogDark = dialogTheme.brightness == Brightness.dark;
+        final dialogBackgroundColor = isDialogDark ? const Color(0xFF2C2C2C) : Colors.white;
+        final dialogTitleColor = isDialogDark ? Colors.grey[200] : Colors.black87;
+        final dialogLabelColor = isDialogDark ? Colors.grey[300] : Colors.black87;
+        final dialogCheckColor = isDialogDark ? Colors.blue[300] : Colors.blue[700];
+        final dialogDividerColor = isDialogDark ? Colors.grey[700] : Colors.grey[300];
+        final dialogButtonBg = isDialogDark ? Colors.blue[600] : Colors.blue[700];
+        final dialogButtonFg = Colors.white;
+        final dialogCancelColor = isDialogDark ? Colors.grey[400] : Colors.grey[700];
+        final dialogCheckboxBorderColor = isDialogDark ? Colors.grey[400] : Colors.grey[400];
+        return AlertDialog(
+          backgroundColor: dialogBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Gán nhãn cho thư', style: TextStyle(color: dialogTitleColor, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: allLabels.length,
+              separatorBuilder: (context, idx) => Divider(height: 1, color: dialogDividerColor),
+              itemBuilder: (context, idx) {
+                final label = allLabels[idx];
+                return Theme(
+                  data: Theme.of(context).copyWith(
+                    unselectedWidgetColor: dialogCheckboxBorderColor,
+                    checkboxTheme: CheckboxThemeData(
+                      side: MaterialStateBorderSide.resolveWith((states) {
+                        if (isDialogDark) {
+                          return const BorderSide(color: Color(0xFFCCCCCC), width: 2); // xám sáng
+                        } else {
+                          return const BorderSide(color: Color(0xFFBDBDBD), width: 2); // xám nhạt
+                        }
+                      }),
+                    ),
+                  ),
+                  child: CheckboxListTile(
+                    value: selectedLabels.contains(label),
+                    title: Text(label, style: TextStyle(color: dialogLabelColor)),
+                    activeColor: dialogCheckColor,
+                    checkColor: Colors.white,
+                    onChanged: (checked) {
+                      if (checked == true) {
+                        if (!selectedLabels.contains(label)) selectedLabels.add(label);
+                      } else {
+                        selectedLabels.remove(label);
+                      }
+                      (context as Element).markNeedsBuild();
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Hủy'),
+              style: TextButton.styleFrom(foregroundColor: dialogCancelColor),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, List<String>.from(selectedLabels)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dialogButtonBg,
+                foregroundColor: dialogButtonFg,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              ),
+              child: const Text('Lưu', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ],
+        );
+      },
     );
+
+    if (result != null) {
+      // Cập nhật Firestore
+      emailLabelsMap[userId] = result;
+      await emailRef.update({'emailLabels': emailLabelsMap});
+      if (mounted) {
+        setState(() {
+          widget.email['emailLabels'] = emailLabelsMap;
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Đã gán nhãn thành công!'),
+          backgroundColor: isDarkMode ? Colors.green[700] : Colors.green,
+        ),
+      );
+      _emailDataWasUpdated = true;
+    }
   }
   // File viewing and downloading methods
   Future<void> _viewAttachment(String attachmentUrl, String fileName) async {

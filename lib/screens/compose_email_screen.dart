@@ -668,6 +668,11 @@ void initState() {
         );
         Navigator.pop(context);
       }
+
+      // After successful email save, check for auto reply
+      await _checkAndSendAutoReply(toRecipients, ccRecipients, bccRecipients, 
+          _subjectController.text.trim(), userEmail);
+
     } catch (e) {
       if (mounted) {
         // MODIFIED
@@ -686,6 +691,146 @@ void initState() {
           _isSending = false;
         });
       }
+    }
+  }
+
+  Future<void> _checkAndSendAutoReply(List<String> toRecipients, List<String> ccRecipients, 
+      List<String> bccRecipients, String originalSubject, String senderEmail) async {
+    try {
+      // Get all recipient emails
+      List<String> allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
+      
+      for (String recipientEmail in allRecipients) {
+        // Check if recipient has auto reply enabled
+        final userQuery = await FirebaseFirestore.instance
+            .collection('user_settings')
+            .where('email', isEqualTo: recipientEmail)
+            .where('autoReplyEnabled', isEqualTo: true)
+            .limit(1)
+            .get();
+            
+        if (userQuery.docs.isNotEmpty) {
+          final autoReplySettings = userQuery.docs.first.data();
+          final String autoReplySubject = autoReplySettings['autoReplySubject'] ?? 'Automatic Reply';
+          final String autoReplyMessage = autoReplySettings['autoReplyMessage'] ?? 
+              'I am currently unavailable and will get back to you soon.';
+          
+          // Get recipient user details
+          final recipientUserQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: recipientEmail)
+              .limit(1)
+              .get();
+              
+          if (recipientUserQuery.docs.isNotEmpty) {
+            final recipientUser = recipientUserQuery.docs.first;
+            final recipientUserId = recipientUser.id;
+            final recipientDisplayName = recipientUser.data()['displayName'] ?? recipientEmail;
+            
+            // Send auto reply email
+            await _sendAutoReplyEmail(
+              fromUserId: recipientUserId,
+              fromEmail: recipientEmail,
+              fromDisplayName: recipientDisplayName,
+              toEmail: senderEmail,
+              subject: autoReplySubject,
+              message: autoReplyMessage,
+              originalSubject: originalSubject,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Error checking auto reply: $e');
+    }
+  }
+
+  Future<void> _sendAutoReplyEmail({
+    required String fromUserId,
+    required String fromEmail,
+    required String fromDisplayName,
+    required String toEmail,
+    required String subject,
+    required String message,
+    required String originalSubject,
+  }) async {
+    try {
+      // Get sender user ID
+      String? senderUserId;
+      final senderQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: toEmail)
+          .limit(1)
+          .get();
+          
+      if (senderQuery.docs.isNotEmpty) {
+        senderUserId = senderQuery.docs.first.id;
+      }
+
+      // Create auto reply email document
+      final autoReplyEmailData = {
+        'from': fromEmail,
+        'senderEmail': fromEmail,
+        'senderId': fromUserId,
+        'senderDisplayName': fromDisplayName,
+        'toRecipients': [toEmail],
+        'ccRecipients': [],
+        'bccRecipients': [],
+        'subject': subject,
+        'body': message,
+        'bodyPlainText': message,
+        'timestamp': FieldValue.serverTimestamp(),
+        'attachmentUrls': [],
+        'isAutoReply': true, // Mark as auto reply
+        'originalSubject': originalSubject,
+        'involvedUserIds': senderUserId != null ? [fromUserId, senderUserId] : [fromUserId],
+        'emailLabels': senderUserId != null ? {
+          fromUserId: ['Sent'],
+          senderUserId: ['Inbox']
+        } : {
+          fromUserId: ['Sent']
+        },
+        'emailIsReadBy': senderUserId != null ? {
+          fromUserId: true,
+          senderUserId: false
+        } : {
+          fromUserId: true
+        },
+        'isTrashedBy': [],
+        'permanentlyDeletedBy': [],
+      };
+
+      // Add recipient details
+      if (senderUserId != null) {
+        autoReplyEmailData['recipientIds'] = [senderUserId];
+        autoReplyEmailData['recipientEmails'] = [toEmail];
+        
+        // Get sender display name
+        final senderDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(senderUserId)
+            .get();
+        if (senderDoc.exists) {
+          final senderDisplayName = senderDoc.data()?['displayName'] ?? toEmail;
+          autoReplyEmailData['recipientDisplayNames'] = [senderDisplayName];
+        } else {
+          autoReplyEmailData['recipientDisplayNames'] = [toEmail];
+        }
+      } else {
+        autoReplyEmailData['recipientIds'] = [];
+        autoReplyEmailData['recipientEmails'] = [toEmail];
+        autoReplyEmailData['recipientDisplayNames'] = [toEmail];
+      }
+
+      // Save auto reply email to Firestore
+      await FirebaseFirestore.instance
+          .collection('emails')
+          .add(autoReplyEmailData);
+
+      print('Auto reply sent from $fromEmail to $toEmail');
+
+    } catch (e) {
+      print('Error sending auto reply: $e');
     }
   }
 
@@ -986,35 +1131,34 @@ void initState() {
                     context: context,
                     controller: _fromController),
                 Divider(
-                    height: 0, indent: 16, endIndent: 16, color: dividerColor),                Container(
-                  padding: const EdgeInsets.only(left: 16.0, right: 8.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 50,
-                        child: Text("Chủ đề", style: TextStyle(fontSize: 16, color: cursorColor)),
-                      ),
-                      Expanded(                        child: TextField(
-                          controller: _subjectController,
-                          cursorColor: cursorColor,
-                          style: TextStyle(color: textFieldTextColor, fontSize: 16),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(vertical: 16.0),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 48),
-                    ],
+                    height: 0, indent: 16, endIndent: 16, color: dividerColor),
+
+                // Sửa 1: Thay thế Row "Chủ đề" bằng một TextField duy nhất
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: TextField(
+                    controller: _subjectController,
+                    cursorColor: cursorColor,
+                    style: TextStyle(color: textFieldTextColor, fontSize: 16),
+                    maxLines: 1, // Đảm bảo chủ đề chỉ nằm trên 1 dòng
+                    decoration: InputDecoration(
+                      // Sử dụng labelText để tạo placeholder động
+                      labelText: 'Chủ đề', 
+                      labelStyle: TextStyle(fontSize: 16, color: cursorColor),
+                      // Xóa các đường viền
+                      border: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16.0),
+                    ),
                   ),
                 ),
                 Divider(height: 0, color: dividerColor),
+             
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Column(                    children: [
+                     const SizedBox(height: 10.0),
                       // Custom simplified toolbar to prevent freezing
                       Container(
                         decoration: BoxDecoration(

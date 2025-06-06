@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:gmail/screens/login.dart';
 import 'package:gmail/screens/gmail_ui.dart';
+import 'package:gmail/services/notification_service.dart';
 import 'package:provider/provider.dart';
 import 'themes.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -38,12 +39,10 @@ void main() async {
       await FirebaseAppCheck.instance.activate(
         androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       );
-      print('Firebase App Check activated for Android.');
-
-      if (kDebugMode) { 
+      print('Firebase App Check activated for Android.');      if (kDebugMode) { 
         // Chờ một chút để đảm bảo App Check đã sẵn sàng trước khi lấy token
         await Future.delayed(const Duration(seconds: 1)); 
-        String? token = await FirebaseAppCheck.instance.getToken(true); // Lấy token (buộc làm mới nếu cần)
+        await FirebaseAppCheck.instance.getToken(true); // Lấy token (buộc làm mới nếu cần)
       }
     } catch (e) {
       print('Error activating Firebase App Check for Android or getting debug token: $e');
@@ -126,11 +125,14 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late final ThemeProvider _themeProvider;
   StreamSubscription<User?>? _authSubscription;
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
   void initState() {
     super.initState();
     _themeProvider = ThemeProvider();
+    // Initialize notification service
+    NotificationService().initialize(_scaffoldMessengerKey);
     // Initial theme load based on current user, if any.
     // This ensures the theme is set correctly when the app starts.
     _themeProvider.loadTheme(FirebaseAuth.instance.currentUser?.uid);
@@ -139,15 +141,17 @@ class _MyAppState extends State<MyApp> {
     _authSubscription =
         FirebaseAuth.instance.authStateChanges().listen((User? user) {
       _themeProvider.loadTheme(user?.uid);
+      // Notify notification service of user change
+      NotificationService().onUserChanged();
     });
   }
 
   @override
   void dispose() {
     _authSubscription?.cancel();
+    NotificationService().dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -161,6 +165,7 @@ class _MyAppState extends State<MyApp> {
             themeMode: themeProvider.themeMode, // Controlled by ThemeProvider
             home: const AuthGate(),
             debugShowCheckedModeBanner: false,
+            scaffoldMessengerKey: _scaffoldMessengerKey,
           );
         },
       ),
