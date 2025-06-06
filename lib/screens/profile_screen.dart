@@ -10,6 +10,7 @@ import 'package:gmail/screens/display_settings_screen.dart'; // ADD THIS IMPORT
 import 'package:gmail/screens/label_screen.dart'; // ADD THIS IMPORT
 import 'package:gmail/screens/notification_settings_screen.dart'; // ADD THIS IMPORT
 import 'package:gmail/screens/auto_answer_mode_screen.dart'; // ADD THIS IMPORT
+import 'package:gmail/screens/search_screen.dart'; // ADD THIS IMPORT
 import 'package:pinput/pinput.dart'; // THÊM IMPORT CHO PINPUT
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -266,17 +267,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         title: Text('Account', style: TextStyle(color: appBarTextColor)),
         backgroundColor: appBarBackgroundColor,
-        elevation: isDarkMode ? 0 : 1.0,
-        actions: [
+        elevation: isDarkMode ? 0 : 1.0,        actions: [
           IconButton(
-              icon: Icon(Icons.search, color: appBarIconColor),
-              onPressed: () {}),
-          IconButton(
-              icon: Icon(Icons.help_outline, color: appBarIconColor),
-              onPressed: () {}),
-          IconButton(
-              icon: Icon(Icons.apps, color: appBarIconColor),
-              onPressed: () {}),
+            icon: Icon(Icons.search, color: appBarIconColor),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SearchScreen(),
+                ),
+              );
+            }
+          ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: CircleAvatar(

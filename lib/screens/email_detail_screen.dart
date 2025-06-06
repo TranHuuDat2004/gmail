@@ -4,15 +4,25 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-// Web specific imports - conditional import
-import 'dart:html' as html show document, AnchorElement;
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'dart:typed_data';
+
+// Conditional import for web download functionality
+import '../utils/web_download_utils_stub.dart'
+    if (dart.library.html) '../utils/web_download_utils.dart'
+    as web_download_utils;
+
+// Conditional import for web PDF viewer
+import '../utils/web_pdf_utils_stub.dart'
+    if (dart.library.html) '../utils/web_pdf_utils_web.dart'
+    as web_pdf_utils;
+
 // Make sure these paths are correct for your project structure
 import '../widgets/action_button.dart';
 import 'compose_email_screen.dart';
@@ -37,10 +47,8 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   String? _fetchedSenderAvatarUrlForDetail;
   // String _senderInitialLetterForDetail = '?'; // REMOVED
   bool _isLoadingSenderDetailsForDetail = true;
-  
-  // For fetched recipient details (for Sent view)
+    // For fetched recipient details (for Sent view)
   String? _fetchedRecipientAvatarUrl;
-  bool _isLoadingRecipientDetails = false;
 
   Map<String, double> _downloadProgress = {}; // Track download progress for each file
   Set<String> _downloadingFiles = {}; // Track which files are being downloaded
@@ -205,15 +213,8 @@ if (_currentUser != null) {
         _isLoadingSenderDetailsForDetail = false;
       });
     }
-  }
-  Future<void> _fetchRecipientAvatarForSentView() async {
+  }  Future<void> _fetchRecipientAvatarForSentView() async {
     if (!mounted || widget.isSentView != true) return;
-
-    if (mounted) {
-      setState(() {
-        _isLoadingRecipientDetails = true;
-      });
-    }
 
     String? fetchedUrl;
     final List<dynamic>? toRecipients = widget.email['toRecipients'] as List<dynamic>?;
@@ -244,7 +245,6 @@ if (_currentUser != null) {
     if (mounted) {
       setState(() {
         _fetchedRecipientAvatarUrl = fetchedUrl;
-        _isLoadingRecipientDetails = false;
       });
     }
   }
@@ -415,6 +415,8 @@ Future<void> _deleteEmail() async {
   }
 }
 
+  // lib/screens/email_detail_screen.dart
+
   void _assignLabels() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final theme = Theme.of(context);
@@ -435,91 +437,130 @@ Future<void> _deleteEmail() async {
     // Lấy nhãn hiện tại của email
     Map<String, dynamic> emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels'] ?? {});
     List<String> currentLabels = List<String>.from(emailLabelsMap[userId] ?? []);
-
     List<String> selectedLabels = List<String>.from(currentLabels);
 
     final result = await showDialog<List<String>>(
       context: context,
       builder: (context) {
-        final dialogTheme = Theme.of(context);
-        final isDialogDark = dialogTheme.brightness == Brightness.dark;
-        final dialogBackgroundColor = isDialogDark ? const Color(0xFF2C2C2C) : Colors.white;
-        final dialogTitleColor = isDialogDark ? Colors.grey[200] : Colors.black87;
-        final dialogLabelColor = isDialogDark ? Colors.grey[300] : Colors.black87;
-        final dialogCheckColor = isDialogDark ? Colors.blue[300] : Colors.blue[700];
-        final dialogDividerColor = isDialogDark ? Colors.grey[700] : Colors.grey[300];
-        final dialogButtonBg = isDialogDark ? Colors.blue[600] : Colors.blue[700];
-        final dialogButtonFg = Colors.white;
-        final dialogCancelColor = isDialogDark ? Colors.grey[400] : Colors.grey[700];
-        final dialogCheckboxBorderColor = isDialogDark ? Colors.grey[400] : Colors.grey[400];
-        return AlertDialog(
-          backgroundColor: dialogBackgroundColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Gán nhãn cho thư', style: TextStyle(color: dialogTitleColor, fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: allLabels.length,
-              separatorBuilder: (context, idx) => Divider(height: 1, color: dialogDividerColor),
-              itemBuilder: (context, idx) {
-                final label = allLabels[idx];
-                return Theme(
-                  data: Theme.of(context).copyWith(
-                    unselectedWidgetColor: dialogCheckboxBorderColor,
-                    checkboxTheme: CheckboxThemeData(
-                      side: MaterialStateBorderSide.resolveWith((states) {
-                        if (isDialogDark) {
-                          return const BorderSide(color: Color(0xFFCCCCCC), width: 2); // xám sáng
-                        } else {
-                          return const BorderSide(color: Color(0xFFBDBDBD), width: 2); // xám nhạt
+        return StatefulBuilder( // Bọc trong StatefulBuilder
+          builder: (context, dialogSetState) {
+            final dialogTheme = Theme.of(context);
+            final isDialogDark = dialogTheme.brightness == Brightness.dark;
+            final dialogBackgroundColor = isDialogDark ? const Color(0xFF2C2C2C) : Colors.white;
+            final dialogTitleColor = isDialogDark ? Colors.grey[200] : Colors.black87;
+            final dialogLabelColor = isDialogDark ? Colors.grey[300] : Colors.black87;
+            final dialogCheckColor = isDialogDark ? Colors.blue[300] : Colors.blue[700];
+            final dialogDividerColor = isDialogDark ? Colors.grey[700]! : Colors.grey[300]!;
+            final dialogButtonBg = isDialogDark ? Colors.blue[600] : Colors.blue[700];
+            final dialogButtonFg = Colors.white;
+            final dialogCancelColor = isDialogDark ? Colors.grey[400] : Colors.grey[700];
+
+            return AlertDialog(
+              backgroundColor: dialogBackgroundColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Gán nhãn cho thư', style: TextStyle(color: dialogTitleColor, fontWeight: FontWeight.bold)),
+              contentPadding: const EdgeInsets.only(top: 12.0),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.add, color: dialogCheckColor),
+                      title: Text('Tạo nhãn mới', style: TextStyle(color: dialogCheckColor, fontWeight: FontWeight.w500)),
+                      onTap: () async {
+                        final newLabelName = await _promptForNewLabel();
+                        if (newLabelName != null && newLabelName.isNotEmpty) {
+                          dialogSetState(() {
+                            if (!allLabels.contains(newLabelName)) {
+                              allLabels.add(newLabelName);
+                              allLabels.sort();
+                            }
+                            if (!selectedLabels.contains(newLabelName)) {
+                              selectedLabels.add(newLabelName);
+                            }
+                          });
                         }
-                      }),
+                      },
                     ),
-                  ),
-                  child: CheckboxListTile(
-                    value: selectedLabels.contains(label),
-                    title: Text(label, style: TextStyle(color: dialogLabelColor)),
-                    activeColor: dialogCheckColor,
-                    checkColor: Colors.white,
-                    onChanged: (checked) {
-                      if (checked == true) {
-                        if (!selectedLabels.contains(label)) selectedLabels.add(label);
-                      } else {
-                        selectedLabels.remove(label);
-                      }
-                      (context as Element).markNeedsBuild();
-                    },
-                    controlAffinity: ListTileControlAffinity.leading,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Hủy'),
-              style: TextButton.styleFrom(foregroundColor: dialogCancelColor),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, List<String>.from(selectedLabels)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: dialogButtonBg,
-                foregroundColor: dialogButtonFg,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    Divider(height: 1, color: dialogDividerColor),
+                    Flexible(
+                      child: allLabels.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Text(
+                                'Chưa có nhãn nào. Hãy tạo nhãn mới.',
+                                textAlign: TextAlign.center,
+                                  style: TextStyle(color: isDialogDark ? Colors.grey.shade600 : Colors.grey.shade500),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: allLabels.length,
+                              itemBuilder: (context, idx) {
+                                final label = allLabels[idx];
+                                // Sửa: Bọc bằng Theme để tùy chỉnh Checkbox
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    checkboxTheme: CheckboxThemeData(
+                                      side: MaterialStateBorderSide.resolveWith((states) {
+                                        // Nếu đang ở dark mode, dùng màu xám sáng cho viền
+                                        if (isDialogDark) {
+                                          return BorderSide(color: Colors.grey.shade400, width: 1.5);
+                                        }
+                                        // Giữ màu mặc định hoặc một màu khác cho light mode
+                                        return BorderSide(color: Colors.grey.shade600, width: 1.5);
+                                      }),
+                                    ),
+                                  ),
+                                  child: CheckboxListTile(
+                                    value: selectedLabels.contains(label),
+                                    title: Text(label, style: TextStyle(color: dialogLabelColor)),
+                                    activeColor: dialogCheckColor,
+                                    checkColor: Colors.white,
+                                    onChanged: (checked) {
+                                      dialogSetState(() {
+                                        if (checked == true) {
+                                          if (!selectedLabels.contains(label)) selectedLabels.add(label);
+                                        } else {
+                                          selectedLabels.remove(label);
+                                        }
+                                      });
+                                    },
+                                    controlAffinity: ListTileControlAffinity.leading,
+                                    contentPadding: const EdgeInsets.only(left: 16, right: 16),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
-              child: const Text('Lưu', style: TextStyle(fontWeight: FontWeight.w600)),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Hủy'),
+                  style: TextButton.styleFrom(foregroundColor: dialogCancelColor),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, List<String>.from(selectedLabels)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: dialogButtonBg,
+                    foregroundColor: dialogButtonFg,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  ),
+                  child: const Text('Lưu', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
     if (result != null) {
-      // Cập nhật Firestore
       emailLabelsMap[userId] = result;
       await emailRef.update({'emailLabels': emailLabelsMap});
       if (mounted) {
@@ -536,9 +577,151 @@ Future<void> _deleteEmail() async {
       _emailDataWasUpdated = true;
     }
   }
-  // File viewing and downloading methods
+
+  // lib/screens/email_detail_screen.dart
+
+  // Thêm hàm mới này
+    Future<String?> _promptForNewLabel() async {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final newLabelController = TextEditingController();
+    
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text('Tạo nhãn mới', style: TextStyle(color: isDarkMode ? Colors.grey[200] : Colors.black87)),
+        content: TextField(
+          controller: newLabelController,
+          autofocus: true,
+          maxLength: 50,
+          decoration: InputDecoration(
+            hintText: 'Nhập tên nhãn...',
+            counterStyle: TextStyle(color: isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            // SỬA: Thêm style vào đây để nút "Tạo" có giao diện nhất quán
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isDarkMode ? Colors.blue[600] : Colors.blue[700],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+            ),
+            onPressed: () async {
+              final newLabelName = newLabelController.text.trim();
+              if (newLabelName.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tên nhãn không được để trống.')));
+                return;
+              }
+              if (newLabelName.contains('/')) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tên nhãn không được chứa ký tự '/'.")));
+                return;
+              }
+
+              final existingLabelQuery = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_currentUser!.uid)
+                  .collection('labels')
+                  .where('name', isEqualTo: newLabelName)
+                  .limit(1)
+                  .get();
+
+              if (existingLabelQuery.docs.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nhãn "$newLabelName" đã tồn tại.')));
+                return;
+              }
+
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_currentUser!.uid)
+                  .collection('labels')
+                  .add({'name': newLabelName, 'createdAt': FieldValue.serverTimestamp()});
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đã tạo nhãn "$newLabelName".')));
+                Navigator.pop(context, newLabelName);
+              }
+            },
+            child: const Text('Tạo'),
+          ),
+        ],
+      ),
+    );
+  }  // File viewing and downloading methods
+  Future<void> _viewPdfAttachment(String attachmentUrl, String fileName) async {
+    final extension = fileName.split('.').last.toLowerCase();
+    
+    if (extension == 'pdf') {
+      try {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );        if (kIsWeb) {
+          // For web - fetch PDF data and show in WebPdfViewerScreen
+          final response = await Dio().get(
+            attachmentUrl,
+            options: Options(responseType: ResponseType.bytes),
+          );
+          
+          if (mounted) {
+            Navigator.pop(context); // Close loading dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => web_pdf_utils.createWebPdfViewer(
+                  Uint8List.fromList(response.data),
+                  fileName,
+                ),
+              ),
+            );
+          }
+        } else {
+          // For mobile - use SfPdfViewer.network
+          if (mounted) {
+            Navigator.pop(context); // Close loading dialog
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => Scaffold(
+                  appBar: AppBar(
+                    title: Text(fileName),
+                    backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF202124) : Colors.white,
+                    iconTheme: IconThemeData(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[400] : Colors.black54),
+                  ),
+                  body: SfPdfViewer.network(attachmentUrl),
+                ),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Close loading dialog if still open
+          _showErrorSnackBar('Không thể mở file PDF: $e');
+        }
+      }
+    } else {
+      // For non-PDF files, fallback to download
+      await _downloadAttachment(attachmentUrl, fileName);
+    }
+  }
+
   Future<void> _viewAttachment(String attachmentUrl, String fileName) async {
     final extension = fileName.split('.').last.toLowerCase();
+    
+    // Check if it's PDF first
+    if (extension == 'pdf') {
+      await _viewPdfAttachment(attachmentUrl, fileName);
+      return;
+    }
     
     // Check if file can be viewed directly in app
     if (_canViewInApp(extension)) {
@@ -620,51 +803,27 @@ Future<void> _deleteEmail() async {
     try {
       if (kIsWeb) {
         // For web platforms - use platform-specific download
-        final response = await http.get(Uri.parse(url));
-        
-        if (response.statusCode == 200) {
-          // Update progress during download
-          for (int i = 0; i <= 100; i += 25) {
-            await Future.delayed(const Duration(milliseconds: 50));
+        // Call the conditionally imported function
+        await web_download_utils.actualDownloadFileForWeb(
+          url,
+          fileName,
+          context, // Pass context
+          (double progress) { // Pass progress callback
             if (mounted) {
               setState(() {
-                _downloadProgress[fileName] = i / 100.0;
+                _downloadProgress[fileName] = progress;
               });
             }
-          }
-          
-          // For web, we'll use a data URL to trigger download
-          final base64 = base64Encode(response.bodyBytes);
-          final dataUrl = 'data:application/octet-stream;base64,$base64';
-          
-          // Create download element and trigger click
-          final anchor = html.document.createElement('a') as html.AnchorElement;
-          anchor.href = dataUrl;
-          anchor.download = fileName;
-          anchor.style.display = 'none';
-          html.document.body!.children.add(anchor);
-          anchor.click();
-          html.document.body!.children.remove(anchor);
-          
-          // Show success message
-          final theme = Theme.of(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã tải xuống "$fileName" thành công!'),
-              backgroundColor: theme.brightness == Brightness.dark ? Colors.green[700] : Colors.green,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        } else {
-          throw Exception('Lỗi tải file từ server (Status: ${response.statusCode})');
-        }
+          },
+        );
       } else {
         // Fallback for non-web platforms
         throw Exception('Web download chỉ hoạt động trên nền tảng web');
       }
     } catch (e) {
-      throw Exception('Lỗi web download: $e');
+      // The actualDownloadFileForWeb will throw, and we catch it here
+      // to show the error SnackBar using the EmailDetailScreen's context.
+      _showErrorSnackBar('Lỗi web download: $e');
     }
   }
 
@@ -922,15 +1081,17 @@ Future<void> _deleteEmail() async {
         })
         .where((s) => s.isNotEmpty)
         .toList() ?? [];
+    // Sửa: Thêm dòng này để lấy danh sách Bcc
+    final List<String> bccRecipientsList = (email['bccRecipients'] as List<dynamic>?)
+        ?.map((e) => e.toString()) // Giả sử bcc chỉ là list các string email
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
     // Define colors based on theme
     final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[50];
     final appBarBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
     final appBarIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
     final starColor = Colors.amber;
     final unstarColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
-    final popupMenuIconColor = appBarIconColor;
-    final popupMenuBackgroundColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
-    final popupMenuTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final subjectColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final senderNameColor = isDarkMode ? Colors.grey[200] : Colors.black87;
     final recipientMetaColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
@@ -990,37 +1151,6 @@ Future<void> _deleteEmail() async {
               tooltip: _isReadLocally ? 'Đánh dấu là chưa đọc' : 'Đánh dấu là đã đọc',
               onPressed: _toggleReadStatus,
               color: appBarIconColor,
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: popupMenuIconColor),
-              color: popupMenuBackgroundColor,
-              onSelected: (value) {
-                if (value == 'assign_labels') _assignLabels();
-                else if (value == 'move_to') {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Di chuyển đến... (chưa triển khai)'),
-                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.black87,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              },
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(value: 'move_to', child: Text('Di chuyển đến', style: TextStyle(color: popupMenuTextColor))),
-                const PopupMenuDivider(),
-                PopupMenuItem<String>( 
-                  onTap: _toggleStarStatus,
-                  child: Row(
-                    children: [
-                      Icon(_isStarredLocally ? Icons.star : Icons.star_border, color: _isStarredLocally ? starColor : unstarColor),
-                      const SizedBox(width: 8),
-                      Text(_isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao', style: TextStyle(color: popupMenuTextColor)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem<String>(value: 'assign_labels', child: Text('Thay đổi nhãn', style: TextStyle(color: popupMenuTextColor))),
-              ],
             ),
           ],
         ],
@@ -1112,6 +1242,9 @@ Future<void> _deleteEmail() async {
                       _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
                       _buildMetaDetailRow(context, "To", toRecipientsList.join(', ')),
                       if (ccRecipientsList.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipientsList.join(', ')),
+                      // Sửa: Thêm điều kiện hiển thị Bcc chỉ cho người gửi
+                      if (_currentUser?.uid == widget.email['senderId'] && bccRecipientsList.isNotEmpty)
+                        _buildMetaDetailRow(context, "Bcc", bccRecipientsList.join(', ')),
                       _buildMetaDetailRow(context, "Date", formattedDate),
                     ],
                   ),

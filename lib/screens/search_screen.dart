@@ -161,8 +161,15 @@ class _SearchScreenState extends State<SearchScreen> {
           }
         }
 
-        if (_hasAttachment && !(data['hasAttachment'] ?? false)) {
-          passesFilters = false;
+         if (_hasAttachment) {
+          // Kiểm tra cả trường boolean mới và danh sách URL cũ
+          bool hasAttachmentField = data['hasAttachment'] as bool? ?? false;
+          bool hasAttachmentList = (data['attachments'] as List<dynamic>?)?.isNotEmpty ?? false;
+
+          // Chỉ lọc ra nếu cả hai điều kiện đều không thỏa mãn
+          if (!hasAttachmentField && !hasAttachmentList) {
+            passesFilters = false;
+          }
         }
 
         if (_selectedLabelFilter != null && _selectedLabelFilter!.isNotEmpty) {

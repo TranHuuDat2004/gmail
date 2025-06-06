@@ -189,7 +189,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final bool isDarkMode = theme.brightness == Brightness.dark;    // Define colors based on theme
     final drawerBackgroundColor = isDarkMode ? const Color(0xFF202124) : Colors.white;
     final headerBackgroundColor = isDarkMode ? const Color(0xFF202124) : const Color(0xFFF6F8FC);
-    final headerIconColor = isDarkMode ? Colors.grey[400] : Colors.blue; // Changed to blue for light mode
     final headerTextColor = isDarkMode ? Colors.grey[300] : Colors.black87;
     final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
     final defaultIconColor = isDarkMode ? Colors.grey[400] : Colors.black54;
@@ -200,18 +199,15 @@ class _CustomDrawerState extends State<CustomDrawer> {
       backgroundColor: drawerBackgroundColor,
       child: ListView(
         padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
+        children: [          DrawerHeader(
             decoration: BoxDecoration(
               color: headerBackgroundColor,
             ),
             child: Row(
               children: [
-                Icon(Icons.mail, color: headerIconColor, size: 32),
-                const SizedBox(width: 10),
-                Text("Gmail", style: TextStyle(color: headerTextColor, fontSize: 22)),
+                Text("Wamail", style: TextStyle(color: headerTextColor, fontSize: 22)),
               ],
-            ),          ),          _buildDrawerItem(
+            ),          ),_buildDrawerItem(
             context, // Pass context
             Icons.inbox,
             "Inbox",

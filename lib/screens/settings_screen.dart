@@ -1,13 +1,12 @@
 // lib/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'profile_screen.dart'; // Dẫn đến ProfileScreen
-import 'change_password_screen.dart'; // Dẫn đến ChangePasswordScreen
 import 'notification_settings_screen.dart';
 import 'display_settings_screen.dart';
 // import 'two_fa_screen.dart'; // Bạn sẽ tạo màn hình này sau nếu cần
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key});  
 
   @override
   Widget build(BuildContext context) {
@@ -40,32 +39,6 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          const Divider(height: 1, color: Color(0xFF444746)),
-          ListTile(
-            leading: Icon(
-              Icons.lock_outline,
-              color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800],
-            ),
-            title: Text('Đổi mật khẩu', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFE8EAED) : Colors.grey[800])),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
-              );
-            },
-          ),
-          // Nếu có màn hình 2FA riêng:
-          // const Divider(height: 1),
-          // ListTile(
-          //   leading: const Icon(Icons.security_outlined),
-          //   title: const Text('Xác thực 2 yếu tố (2FA)'),
-          //   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          //   onTap: () {
-          //     // Navigator.push(context, MaterialPageRoute(builder: (context) => const TwoFAScreen()));
-          //      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở màn hình 2FA")));
-          //   },
-          // ),
 
           _buildSettingsSectionTitle(context, "Ứng dụng"),
           ListTile(
@@ -107,10 +80,18 @@ class SettingsScreen extends StatelessWidget {
   Widget _buildSettingsSectionTitle(BuildContext context, String title) {
     final theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color blueColor = const Color(0xFF1A73E8); // Màu xanh nút đăng nhập
+    
+    // Định nghĩa màu xanh cho cả hai chế độ
+    final Color accentColor = isDark ? Colors.blue[300]! : const Color(0xFF1A73E8);
+    
+    // Định nghĩa màu cho các mục khác (nếu có)
+    final Color otherSectionColor = isDark ? Colors.grey[300]! : Colors.grey[700]!;
+
+    // Quyết định màu dựa trên tiêu đề
     final Color sectionColor = (title.toLowerCase().contains('tài khoản') || title.toLowerCase().contains('ứng dụng'))
-        ? (isDark ? Colors.red[700]! : blueColor)
-        : (isDark ? Colors.grey[300]! : Colors.grey[700]!);
+        ? accentColor
+        : otherSectionColor;
+        
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 20.0, bottom: 8.0),
       child: Text(

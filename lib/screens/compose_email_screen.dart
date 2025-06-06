@@ -10,6 +10,35 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:url_launcher/url_launcher.dart'; // Thêm import này
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // Đảm bảo bạn đã thêm package này
+
+
+// Màn hình xem trước PDF cho Web
+class WebPdfViewerScreen extends StatefulWidget {
+  final Uint8List pdfBytes;
+  final String fileName;
+
+  const WebPdfViewerScreen({Key? key, required this.pdfBytes, required this.fileName}) : super(key: key);
+
+  @override
+  _WebPdfViewerScreenState createState() => _WebPdfViewerScreenState();
+}
+
+class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.fileName),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF202124) : Colors.white,
+        iconTheme: IconThemeData(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[400] : Colors.black54),
+      ),
+      body: const Center(child: Text('PDF viewer not supported on this platform')),
+    );
+  }
+}
+
 
 class ComposeEmailScreen extends StatefulWidget {
   final Map<String, dynamic>? replyOrForwardEmail;
@@ -58,21 +87,115 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   String _defaultFontFamily = 'Roboto';
   double _defaultEditorFontSize = 14.0;
   bool _isLoadingAppSettings = true;
+  bool _toHasError = false;
+  bool _ccHasError = false;
+  bool _bccHasError = false;
   @override
   @override
-void initState() {
-  super.initState();
-  _quillController = quill.QuillController.basic();
-  // Add listener to update button states when selection changes
-  _quillController.addListener(() {
-    if (mounted) {
-      // Điều này sẽ gọi lại build, cập nhật value của Dropdowns
-      // và isToggled của các _buildToolbarButton
-      setState(() {});
+@override
+  void initState() {
+    super.initState();
+    _quillController = quill.QuillController.basic();
+    _quillController.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+    // SỬA: Thêm các listeners để xóa lỗi khi người dùng nhập liệu
+    _toController.addListener(() {
+      if (_toHasError) setState(() => _toHasError = false);
+    });
+    _ccController.addListener(() {
+      if (_ccHasError) setState(() => _ccHasError = false);
+    });
+    _bccController.addListener(() {
+      if (_bccHasError) setState(() => _bccHasError = false);
+    });
+    
+    _loadAppSettingsAndInitialize();
+  }
+
+  Future<void> _viewAttachmentPreview(File file) async {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    // Đối với web, file.path chính là fileName. Đối với mobile, cần trích xuất.
+    final String fileName = kIsWeb ? file.path : file.path.split('/').last.split('\\\\').last;
+    final String fileExtension = fileName.split('.').last.toLowerCase();
+
+    if (fileExtension == 'pdf') {
+      if (kIsWeb) {
+        final Uint8List? pdfData = _webAttachmentData[fileName];
+        if (pdfData != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => WebPdfViewerScreen(pdfBytes: pdfData, fileName: fileName),
+            ),
+          );
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Không tìm thấy dữ liệu cho file PDF: $fileName')),
+            );
+          }
+        }
+      } else { // Mobile PDF
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              appBar: AppBar(
+                title: Text(fileName),
+                backgroundColor: isDarkMode ? const Color(0xFF202124) : Colors.white,
+                iconTheme: IconThemeData(color: isDarkMode ? Colors.grey[400] : Colors.black54),
+              ),
+              body: SfPdfViewer.file(file), // 'file' ở đây là File object với full path cho mobile
+            ),
+          ),
+        );
+      }
+    } else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].contains(fileExtension)) {
+      if (kIsWeb) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Xem trước file Office trên web cần giải pháp viewer chuyên dụng hoặc tải file về máy.')),
+          );
+        }
+      } else { // Mobile Office
+        // 'file' ở đây là File object với full path cho mobile
+        final uri = Uri.file(file.path);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Không tìm thấy ứng dụng để mở file $fileName')),
+            );
+          }
+        }
+      }
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(fileExtension)) {
+        // Xem trước ảnh (đã hoạt động theo mô tả của bạn, nếu cần code cụ thể thì cung cấp thêm)
+        // Ví dụ:
+        Navigator.push(context, MaterialPageRoute(builder: (_) {
+          return Scaffold(
+            appBar: AppBar(title: Text(fileName)),
+            body: Center(
+              child: kIsWeb 
+                ? (_webAttachmentData[fileName] != null ? Image.memory(_webAttachmentData[fileName]!) : Text("Không thể tải ảnh"))
+                : Image.file(file),
+            ),
+          );
+        }));
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chưa hỗ trợ xem trước cho loại file này: $fileExtension')),
+        );
+      }
     }
-  });
-  _loadAppSettingsAndInitialize();
-}
+  }
 
   final FocusNode _toFocusNode = FocusNode();
   Future<void> _loadAppSettingsAndInitialize() async {
@@ -357,6 +480,14 @@ void initState() {
     if (!mounted) return;
     final theme = Theme.of(context); // Get theme for SnackBar & Dialog
 
+    setState(() { _isSending = true; }); // Báo hiệu đang xử lý
+    final bool areRecipientsValid = await _validateRecipients();
+    if (!areRecipientsValid) {
+      setState(() { _isSending = false; }); // Dừng xử lý
+      return; // Dừng hàm nếu có email không hợp lệ
+    }
+
+
     if (_toController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -365,6 +496,7 @@ void initState() {
           behavior: SnackBarBehavior.floating,
         ),
       );
+      setState(() { _isSending = false; });
       return;
     }
 
@@ -635,6 +767,7 @@ void initState() {
         'bodyDeltaJson': bodyDeltaJson,
         'timestamp': FieldValue.serverTimestamp(),
         'attachments': attachmentUrls,
+        'hasAttachment': attachmentUrls.isNotEmpty, // Added this line
         'emailLabels': emailLabels,
         'emailIsReadBy': emailIsReadBy,
         'involvedUserIds': involvedUserIds.toSet().toList(),
@@ -693,6 +826,73 @@ void initState() {
       }
     }
   }
+
+  Future<bool> _validateRecipients() async {
+    // Reset trạng thái lỗi trước mỗi lần kiểm tra
+    setState(() {
+      _toHasError = false;
+      _ccHasError = false;
+      _bccHasError = false;
+    });
+
+    List<String> parseEmails(String text) {
+      return text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+
+    final toEmails = parseEmails(_toController.text);
+    final ccEmails = parseEmails(_ccController.text);
+    final bccEmails = parseEmails(_bccController.text);
+
+    final allUniqueEmails = {...toEmails, ...ccEmails, ...bccEmails}.toList();
+
+    if (allUniqueEmails.isEmpty) {
+      // Logic kiểm tra trường "To" rỗng đã có ở hàm send, nên ở đây ta coi là hợp lệ
+      return true;
+    }
+    
+    Set<String> validEmailsInDB = {};
+    
+    // Firestore "whereIn" chỉ hỗ trợ tối đa 30 item mỗi lần, nên ta phải chia nhỏ nếu cần
+    for (var i = 0; i < allUniqueEmails.length; i += 30) {
+      var chunk = allUniqueEmails.sublist(i, i + 30 > allUniqueEmails.length ? allUniqueEmails.length : i + 30);
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', whereIn: chunk)
+            .get();
+        
+        for (var doc in querySnapshot.docs) {
+          validEmailsInDB.add(doc['email'] as String);
+        }
+      } catch (e) {
+        print("Error validating emails: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Lỗi khi kiểm tra email: $e")),
+        );
+        return false; // Dừng lại nếu có lỗi truy vấn DB
+      }
+    }
+    
+    final invalidEmails = allUniqueEmails.where((email) => !validEmailsInDB.contains(email)).toSet();
+
+    if (invalidEmails.isNotEmpty) {
+      setState(() {
+        _toHasError = toEmails.any((email) => invalidEmails.contains(email));
+        _ccHasError = ccEmails.any((email) => invalidEmails.contains(email));
+        _bccHasError = bccEmails.any((email) => invalidEmails.contains(email));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Một số email người nhận không hợp lệ: ${invalidEmails.join(", ")}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return false; // Có email không hợp lệ
+    }
+
+    return true; // Tất cả email đều hợp lệ
+  }
+
 
   Future<void> _checkAndSendAutoReply(List<String> toRecipients, List<String> ccRecipients, 
       List<String> bccRecipients, String originalSubject, String senderEmail) async {
@@ -1099,6 +1299,7 @@ void initState() {
                   label: "Đến",
                   controller: _toController,
                   focusNode: _toFocusNode,
+                  isInvalid: _toHasError, // Sửa: Thêm dòng này
                   onToggleCcBcc: () {
                     setState(() {
                       _showCcBcc = !_showCcBcc;
@@ -1114,7 +1315,8 @@ void initState() {
                   _buildRecipientField(
                       context: context,
                       label: "Cc",
-                      controller: _ccController),
+                      controller: _ccController,
+                      isInvalid: _ccHasError), // Sửa: Thêm dòng này
                   Divider(
                       height: 0,
                       indent: 16,
@@ -1123,7 +1325,8 @@ void initState() {
                   _buildRecipientField(
                       context: context,
                       label: "Bcc",
-                      controller: _bccController),
+                      controller: _bccController,
+                      isInvalid: _bccHasError), // Sửa: Thêm dòng này
                 ],
                 Divider(
                     height: 0, indent: 16, endIndent: 16, color: dividerColor),
@@ -1344,41 +1547,46 @@ Container(
                       runSpacing: 8.0,
                       children: _attachments.asMap().entries.map((entry) {
                         final int index = entry.key;
-                        final File file = entry.value;
-                        String fileName = kIsWeb
-                            ? file.path
-                            : file.path.split('/').last.split('\\').last;
+                        final File fileEntry = entry.value; // Đổi tên biến để tránh nhầm lẫn với 'file' trong scope khác
+                        String currentFileName = kIsWeb
+                            ? fileEntry.path
+                            : fileEntry.path.split('/').last.split('\\\\').last;
 
-                        return Container(
-                          constraints: BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.of(context).size.width * 0.4),
-                          child: Chip(
-                            backgroundColor: attachmentChipBackgroundColor,
-                            avatar: Icon(_getFileIcon(fileName),
-                                size: 18, color: attachmentChipLabelColor),
-                            label: Text(
-                              fileName,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  color: attachmentChipLabelColor,
-                                  fontSize: 12),
-                            ),
-                            onDeleted: () {                              setState(() {
-                                String fileKey = kIsWeb
-                                    ? file.path
-                                    : file.path
-                                        .split('/')
-                                        .last
-                                        .split('\\')
-                                        .last;
-                                _webAttachmentData.remove(fileKey);
-                                _attachments.removeAt(index);
-                              });
-                            },
-                            deleteIconColor: attachmentChipDeleteIconColor,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
+                        Widget chipContent = Chip(
+                          backgroundColor: attachmentChipBackgroundColor,
+                          avatar: Icon(_getFileIcon(currentFileName),
+                              size: 18, color: attachmentChipLabelColor),
+                          label: Text(
+                            currentFileName,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: attachmentChipLabelColor,
+                                fontSize: 12),
+                          ),
+                          onDeleted: () {
+                            setState(() {
+                              // fileKey cho _webAttachmentData phải là fileName
+                              String fileKeyForWebData = kIsWeb ? fileEntry.path : fileEntry.path.split('/').last.split('\\\\').last;
+                              _webAttachmentData.remove(fileKeyForWebData);
+                              _attachments.removeAt(index);
+                            });
+                          },
+                          deleteIconColor: attachmentChipDeleteIconColor,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        );
+                        
+                        return GestureDetector(
+                          onTap: () {
+                            // fileEntry ở đây là File object đã được lưu trong _attachments
+                            // Đối với web, path của nó là fileName. Đối với mobile, path là full path.
+                            _viewAttachmentPreview(fileEntry);
+                          },
+                          child: Container( // Container đã có sẵn trong code của bạn
+                            constraints: BoxConstraints(
+                                maxWidth:
+                                    MediaQuery.of(context).size.width * 0.4),
+                            child: chipContent,
                           ),
                         );
                       }).toList(),
@@ -1398,7 +1606,8 @@ Container(
       required String label,
       required TextEditingController controller,
       FocusNode? focusNode,
-      VoidCallback? onToggleCcBcc}) {
+      VoidCallback? onToggleCcBcc,
+      bool isInvalid = false}) { // SỬA: Thêm tham số isInvalid
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
@@ -1412,9 +1621,14 @@ Container(
         children: [
           SizedBox(
             width: 50,
-            child:
-                Text(label, style: TextStyle(fontSize: 16, color: cursorColor)),
-          ),          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                  fontSize: 16,
+                  // SỬA: Dùng isInvalid để đổi màu thành đỏ nếu có lỗi
+                  color: isInvalid ? Colors.red.shade400 : cursorColor,
+                )),
+          ),
+          Expanded(
             child: TextField(
               controller: controller,
               focusNode: focusNode,
@@ -1675,6 +1889,8 @@ void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
       ),
     );
   }
+
+ 
 
   IconData _getFileIcon(String fileName) {
     String extension = fileName.split('.').last.toLowerCase();
