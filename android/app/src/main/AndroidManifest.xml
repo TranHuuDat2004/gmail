@@ -31,6 +31,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>        </activity>
+        <!-- Meta-data để tự động tải model Language ID khi cài đặt -->
+        <meta-data
+            android:name="com.google.mlkit.languageid.DEPENDENCIES"
+            android:value="langid" />
+            
+        <!-- Meta-data để tự động tải các model Dịch thuật cụ thể khi cài đặt -->
+        <!-- Thay "vi,en" bằng các mã ngôn ngữ BCP-47 bạn muốn tải sẵn -->
+        <meta-data
+            android:name="com.google.mlkit.translate.DEPENDENCIES"
+            android:value="vi,en" /> 
+
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

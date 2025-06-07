@@ -88,16 +88,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   Map<String, Uint8List> _webAttachmentData = {};  String? _draftId;
   Timer? _debounceTimer;
   bool _isSending = false;
-
   String _defaultFontFamily = 'Roboto';
   double _defaultEditorFontSize = 14.0;
   bool _isLoadingAppSettings = true;
   bool _toHasError = false;
   bool _ccHasError = false;
-  bool _bccHasError = false;
+  bool _bccHasError = false;  final List<double> _availableFontSizes = const [8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
+
   @override
-  @override
-@override
   void initState() {
     super.initState();
     _quillController = quill.QuillController.basic();
@@ -212,13 +210,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (currentUser != null) {
       try {
         DocumentSnapshot userSettings = await FirebaseFirestore.instance
-            .collection('user_settings')
+            .collection('users')
             .doc(currentUser.uid)
-            .get();
-        if (userSettings.exists && userSettings.data() != null) {
-          Map<String, dynamic> data = userSettings.data() as Map<String, dynamic>;
-          _defaultFontFamily = data['editorFontFamily'] ?? 'Roboto';
-          _defaultEditorFontSize = (data['editorFontSize'] as num?)?.toDouble() ?? 14.0;
+            .collection('settings')
+            .doc('editor')
+            .get();        if (userSettings.exists && userSettings.data() != null) {
+          final settingsData = userSettings.data() as Map<String, dynamic>;
+          _defaultFontFamily = settingsData['fontFamily'] as String? ?? 'Roboto';
+          final loadedFontSize = (settingsData['fontSize'] as num?)?.toDouble() ?? 14.0;
+          // Ensure the loaded font size is in our available list
+          if (_availableFontSizes.contains(loadedFontSize)) {
+            _defaultEditorFontSize = loadedFontSize;
+          } else {
+            // Find the closest available font size
+            _defaultEditorFontSize = _availableFontSizes.reduce((a, b) => 
+              (a - loadedFontSize).abs() < (b - loadedFontSize).abs() ? a : b);
+          }
         }
       } catch (e) {
         print("Error loading user settings: $e");
@@ -1420,12 +1427,10 @@ Container(
       // Lấy font size hiện tại từ selection hoặc typing attributes
       value: _getCurrentFontSize(),
       style: TextStyle(color: textFieldTextColor, fontSize: 12),
-      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,
-      items: [10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0].map((size) {
-        return DropdownMenuItem(
-            value: size,
-            // Hiển thị 'pt' cho rõ ràng hơn
-            child: Text('${size.toInt()}pt')
+      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,      items: _availableFontSizes.map((size) { // Use _availableFontSizes
+        return DropdownMenuItem<double>(
+          value: size,
+          child: Text(size.toStringAsFixed(0)), // Keep default font for size display
         );
       }).toList(),
       onChanged: (size) {
@@ -1725,7 +1730,6 @@ String _getCurrentFontFamily() {
 
 // Helper: lấy font size hiện tại tại vị trí con trỏ hoặc selection
 double _getCurrentFontSize() {
-  // _defaultEditorFontSize là size được load từ user_settings, dùng làm fallback.
   final attrs = _quillController.getSelectionStyle().attributes;
   final sizeValue = attrs[quill.Attribute.size.key]?.value;
 
@@ -1734,9 +1738,15 @@ double _getCurrentFontSize() {
     // Chuyển đổi an toàn về double
     final String sizeString = sizeValue.toString().replaceAll('px', '');
     final double? parsedSize = double.tryParse(sizeString);
-    if (parsedSize != null) {
+    if (parsedSize != null && _availableFontSizes.contains(parsedSize)) {
       return parsedSize;
     }
+  }
+  // Fallback to _defaultEditorFontSize, and ensure it's valid
+  // If _defaultEditorFontSize is not in the list, find the closest one
+  if (!_availableFontSizes.contains(_defaultEditorFontSize)) {
+    _defaultEditorFontSize = _availableFontSizes.reduce((a, b) => 
+      (a - _defaultEditorFontSize).abs() < (b - _defaultEditorFontSize).abs() ? a : b);
   }
   return _defaultEditorFontSize;
 }

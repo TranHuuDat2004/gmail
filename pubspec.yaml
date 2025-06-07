@@ -20,6 +20,10 @@ dependencies:
   permission_handler: ^11.2.0   # For storage permissions
   url_launcher: ^6.2.1          # For web downloads
 
+  google_mlkit_language_id: ^0.11.0
+  google_mlkit_translation: ^0.11.0
+  js: ^0.7.0
+  
   shared_preferences: ^2.2.2
   # Các gói khác
   http: ^1.2.0

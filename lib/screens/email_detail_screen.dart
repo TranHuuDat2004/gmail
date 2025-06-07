@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,6 +12,10 @@ import 'dart:convert';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:typed_data';
+
+// AI Feature Imports
+import 'package:google_mlkit_language_id/google_mlkit_language_id.dart';
+import 'package:google_mlkit_translation/google_mlkit_translation.dart' as mlkit_translation;
 
 // Conditional import for web download functionality
 import '../utils/web_download_utils_stub.dart'
@@ -22,6 +26,11 @@ import '../utils/web_download_utils_stub.dart'
 import '../utils/web_pdf_utils_stub.dart'
     if (dart.library.html) '../utils/web_pdf_utils_web.dart'
     as web_pdf_utils;
+
+// Conditional import for web translation
+import '../utils/web_translation_utils_stub.dart' // Ensure this file exists
+    if (dart.library.html) '../utils/web_translation_utils_web.dart' // Ensure this file exists
+    as web_translation_utils;
 
 // Make sure these paths are correct for your project structure
 import '../widgets/action_button.dart';
@@ -54,6 +63,19 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   Set<String> _downloadingFiles = {}; // Track which files are being downloaded
   bool _emailDataWasUpdated = false; // Ensure this flag is present
 
+  // AI Feature: Language Detection & Translation State Variables
+  String _identifiedLanguage = "Đang xác định ngôn ngữ...";
+  String? _translatedText;
+  bool _isTranslating = false;
+  bool _isModelDownloading = false;
+  bool _languageIdentificationAttempted = false; // To prevent multiple calls if content doesn't change
+
+  late final LanguageIdentifier _languageIdentifier;
+  mlkit_translation.OnDeviceTranslator? _onDeviceTranslator;
+  mlkit_translation.TranslateLanguage? _sourceLanguage = mlkit_translation.TranslateLanguage.english; // MODIFIED: Made nullable
+  final mlkit_translation.TranslateLanguage _targetLanguage = mlkit_translation.TranslateLanguage.vietnamese;
+
+
   @override
   void initState() {
     super.initState();
@@ -61,36 +83,45 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
 
     // Initialize local star and read status based on current user and email data
     // Trong initState() của EmailDetailScreen
-if (_currentUser != null) {
-  Map<String, dynamic>? emailLabelsMap;
-  if (widget.email['emailLabels'] != null) {
-    try {
-      // Cố gắng ép kiểu một cách an toàn
-      emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels']);
-    } catch (e) {
-      print("Error casting emailLabels: $e. Value: ${widget.email['emailLabels']}");
-      emailLabelsMap = null; // Hoặc xử lý mặc định
-    }
-  }
-  final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
-  _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
+    if (_currentUser != null) {
+      Map<String, dynamic>? emailLabelsMap;
+      if (widget.email['emailLabels'] != null) {
+        try {
+          // Cố gắng ép kiểu một cách an toàn
+          emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels']);
+        } catch (e) {
+          print("Error casting emailLabels: $e. Value: ${widget.email['emailLabels']}");
+          emailLabelsMap = null; // Hoặc xử lý mặc định
+        }
+      }
+      final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
+      _isStarredLocally = userSpecificLabels?.contains('Starred') ?? false;
 
-  Map<String, dynamic>? emailIsReadByMap;
-  if (widget.email['emailIsReadBy'] != null) {
-    try {
-      emailIsReadByMap = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
-    } catch (e) {
-      print("Error casting emailIsReadBy: $e. Value: ${widget.email['emailIsReadBy']}");
-      emailIsReadByMap = null; // Hoặc xử lý mặc định
+      Map<String, dynamic>? emailIsReadByMap;
+      if (widget.email['emailIsReadBy'] != null) {
+        try {
+          emailIsReadByMap = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
+        } catch (e) {
+          print("Error casting emailIsReadBy: $e. Value: ${widget.email['emailIsReadBy']}");
+          emailIsReadByMap = null; // Hoặc xử lý mặc định
+        }
+      }
+      _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
+    } else {
+      _isStarredLocally = false;
+      _isReadLocally = false;
     }
-  }
-  _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
-} else {
-  _isStarredLocally = false;
-  _isReadLocally = false;
-}
 
-    _fetchSenderDetailsForDetailScreen();
+    if (!kIsWeb) {
+      _languageIdentifier = LanguageIdentifier(confidenceThreshold: 0.5);
+    } else {
+      // For web, we'll use the Cloud API. Initialize states accordingly.
+      _identifiedLanguage = "Đang xác định ngôn ngữ (web)...";
+      _languageIdentificationAttempted = false; // Allow API call
+    }
+
+    // Fetch sender details (handles both received and current user for sent view)
+    _fetchSenderDetailsForDetailScreen(); // Ensure this is called
 
     // Fetch recipient avatar if this is a Sent view
     if (widget.isSentView == true) {
@@ -163,7 +194,8 @@ if (_currentUser != null) {
     String? senderEmail = widget.email['senderEmail'] as String? ?? widget.email['from'] as String?;
     String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
                                  senderEmail ??
-                                 'Không rõ';
+
+ 'Không rõ';
 
     // Try to fetch by senderId first
     if (senderId != null && senderId.isNotEmpty) {
@@ -1101,11 +1133,22 @@ Future<void> _deleteEmail() async {
     final timeColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     final metaDetailBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
     final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;
-    final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+    final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;    final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
     final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
     final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF3C4043) : Colors.blue[700]; // Dark grey background for dark mode
-    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white;    // Light blue text/icon for dark mode
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white; // Light blue text/icon for dark mode
+
+    final Color translateButtonIconColor = isDarkMode ? actionButtonForegroundColor : Colors.white; // White for both modes to stand out on blue button
+
+    // AI Feature: Call identify language if not already attempted and body is available
+    // This condition should now work for both web and mobile
+    if (!_languageIdentificationAttempted && emailBodyToDisplay.isNotEmpty && emailBodyToDisplay != '(Không có nội dung)') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _identifyLanguage(emailBodyToDisplay); // _identifyLanguage handles kIsWeb internally
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: scaffoldBackgroundColor,
@@ -1168,7 +1211,8 @@ Future<void> _deleteEmail() async {
                 children: [
                   Expanded(
                     child: Text(
-                      displaySubject, // Use displaySubject here
+                      displaySubject // Use displaySubject here
+                      ,
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w500,
@@ -1271,6 +1315,103 @@ Future<void> _deleteEmail() async {
                       ),
                     ),
             ),
+
+            // AI Features UI
+            // Updated condition to show AI features on web as well
+            if (_languageIdentificationAttempted && !isBodyPlaceholder)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _identifiedLanguage, // This will show "Đang xác định (web)..." or the result
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                      ),
+                    ),
+                    // Show translate button if language is identified, not target language, and not currently processing
+                    if (_sourceLanguage != null && // Ensures identification was successful enough to set a source language
+                        _sourceLanguage != _targetLanguage &&
+                        !_isTranslating &&
+                        !_isModelDownloading) // _isModelDownloading is for MLKit, but good to keep
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: ElevatedButton.icon(
+                          icon: Icon(Icons.translate, size: 18, color: translateButtonIconColor),
+                          label: Text(
+                            _translatedText == null
+                                ? 'Dịch sang ${_getLanguageDisplayName(_targetLanguage)}'
+                                : (_translatedText!.startsWith("Lỗi") || _translatedText!.startsWith("Ngoại lệ") || _translatedText!.startsWith("Dịch thuật yêu cầu") ? 'Thử dịch lại' : 'Xem bản gốc'), // Toggle to show original
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          onPressed: () {
+                            if (emailBodyToDisplay.isNotEmpty && emailBodyToDisplay != '(Không có nội dung)') {
+                              if (_translatedText != null && !(_translatedText!.startsWith("Lỗi") || _translatedText!.startsWith("Ngoại lệ")|| _translatedText!.startsWith("Dịch thuật yêu cầu"))) {
+                                // If already translated, toggle back to null (show original)
+                                setState(() {
+                                  _translatedText = null;
+                                });
+                              } else {
+                                // Otherwise, perform translation
+                                _translateText(emailBodyToDisplay);
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Không có nội dung để dịch.")),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDarkMode ? Colors.blueGrey[700] : Colors.blue[600],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                        ),
+                      ),
+                    if (_isTranslating) // Show loading indicator when translating (applies to web too)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Row(
+                          children: [
+                            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: isDarkMode ? Colors.blueGrey[300] : Colors.blue[700])),
+                            SizedBox(width: 8),
+                            Text( kIsWeb ? "Đang dịch (web)..." : "Đang dịch...", style: TextStyle(color: isDarkMode ? Colors.grey[400] : Colors.grey[700])),
+                          ],
+                        ),
+                      ),
+                    if (_translatedText != null && !_isTranslating) // Show translated text if available and not currently translating
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _translatedText!.startsWith("Lỗi") || _translatedText!.startsWith("Ngoại lệ") || _translatedText!.startsWith("Dịch thuật yêu cầu") ? "Thông báo:" : "Bản dịch sang ${_getLanguageDisplayName(_targetLanguage)}:",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.grey[300] : Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            SelectableText(
+                              _translatedText!,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: (_translatedText!.startsWith("Lỗi") || _translatedText!.startsWith("Ngoại lệ") || _translatedText!.startsWith("Dịch thuật yêu cầu"))
+                                    ? (isDarkMode ? Colors.red[300] : Colors.red[700])
+                                    : (isDarkMode ? Colors.grey[200] : Colors.black87),
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
             if (attachments.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 20.0, bottom: 10.0),
@@ -1634,6 +1775,354 @@ Future<void> _deleteEmail() async {
   }
   @override
   void dispose() {
+    if (!kIsWeb) {
+      _languageIdentifier.close();
+      _onDeviceTranslator?.close();
+    }
     super.dispose();
   }
+
+  // Helper function to get BCP-47 code from TranslateLanguage
+  // Helper function to get BCP-47 code from TranslateLanguage
+String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: Parameter is nullable
+  if (lang == null) return 'und'; // ADDED: Handle null case
+
+  final Map<mlkit_translation.TranslateLanguage, String> bcp47Map = {
+    mlkit_translation.TranslateLanguage.afrikaans: 'af', mlkit_translation.TranslateLanguage.albanian: 'sq', mlkit_translation.TranslateLanguage.arabic: 'ar',
+    mlkit_translation.TranslateLanguage.belarusian: 'be', mlkit_translation.TranslateLanguage.bengali: 'bn', mlkit_translation.TranslateLanguage.bulgarian: 'bg',
+    mlkit_translation.TranslateLanguage.catalan: 'ca', mlkit_translation.TranslateLanguage.chinese: 'zh', mlkit_translation.TranslateLanguage.croatian: 'hr',
+    mlkit_translation.TranslateLanguage.czech: 'cs', mlkit_translation.TranslateLanguage.danish: 'da', mlkit_translation.TranslateLanguage.dutch: 'nl',
+    mlkit_translation.TranslateLanguage.english: 'en', mlkit_translation.TranslateLanguage.esperanto: 'eo', mlkit_translation.TranslateLanguage.estonian: 'et',
+    mlkit_translation.TranslateLanguage.finnish: 'fi', mlkit_translation.TranslateLanguage.french: 'fr', mlkit_translation.TranslateLanguage.galician: 'gl',
+    mlkit_translation.TranslateLanguage.georgian: 'ka', mlkit_translation.TranslateLanguage.german: 'de', mlkit_translation.TranslateLanguage.greek: 'el',
+    mlkit_translation.TranslateLanguage.gujarati: 'gu',
+    mlkit_translation.TranslateLanguage.hebrew: 'he', // BCP-47 is 'he', not 'iw' for modern use
+    mlkit_translation.TranslateLanguage.hindi: 'hi', mlkit_translation.TranslateLanguage.hungarian: 'hu', mlkit_translation.TranslateLanguage.icelandic: 'is',
+    mlkit_translation.TranslateLanguage.indonesian: 'id', mlkit_translation.TranslateLanguage.irish: 'ga', mlkit_translation.TranslateLanguage.italian: 'it',
+    mlkit_translation.TranslateLanguage.japanese: 'ja', mlkit_translation.TranslateLanguage.kannada: 'kn', mlkit_translation.TranslateLanguage.korean: 'ko',
+    mlkit_translation.TranslateLanguage.latvian: 'lv', mlkit_translation.TranslateLanguage.lithuanian: 'lt', mlkit_translation.TranslateLanguage.macedonian: 'mk',
+    mlkit_translation.TranslateLanguage.malay: 'ms', mlkit_translation.TranslateLanguage.maltese: 'mt', mlkit_translation.TranslateLanguage.marathi: 'mr',
+    mlkit_translation.TranslateLanguage.norwegian: 'no', mlkit_translation.TranslateLanguage.persian: 'fa', mlkit_translation.TranslateLanguage.polish: 'pl',
+    mlkit_translation.TranslateLanguage.portuguese: 'pt', mlkit_translation.TranslateLanguage.romanian: 'ro', mlkit_translation.TranslateLanguage.russian: 'ru',
+    mlkit_translation.TranslateLanguage.slovak: 'sk', mlkit_translation.TranslateLanguage.slovenian: 'sl', mlkit_translation.TranslateLanguage.spanish: 'es',
+    mlkit_translation.TranslateLanguage.swahili: 'sw', mlkit_translation.TranslateLanguage.swedish: 'sv', mlkit_translation.TranslateLanguage.tagalog: 'tl',
+    mlkit_translation.TranslateLanguage.tamil: 'ta', mlkit_translation.TranslateLanguage.telugu: 'te', mlkit_translation.TranslateLanguage.thai: 'th',
+    mlkit_translation.TranslateLanguage.turkish: 'tr', mlkit_translation.TranslateLanguage.ukrainian: 'uk', mlkit_translation.TranslateLanguage.urdu: 'ur',
+    mlkit_translation.TranslateLanguage.vietnamese: 'vi', mlkit_translation.TranslateLanguage.welsh: 'cy',
+  };
+  return bcp47Map[lang] ?? 'und'; // MODIFIED: Default to 'und' if not found
+}
+
+  // Helper function to get a displayable name for TranslateLanguage
+  String _getLanguageDisplayName(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: Parameter is nullable
+    if (lang == null) return 'Không xác định'; // ADDED: Handle null case
+
+    final bcp47 = _getBcp47Code(lang);
+    switch (bcp47) {
+      case 'en': return 'English';
+      case 'vi': return 'Tiếng Việt';
+     
+      case 'zh': return 'Chinese';
+      case 'es': return 'Spanish';
+      case 'fr': return 'French';
+      case 'de': return 'German';
+      case 'ja': return 'Japanese';
+      case 'ko': return 'Korean';
+      // Add more mappings as needed
+      default:
+        String name = lang.name;
+        if (name.isNotEmpty) return name[0].toUpperCase() + name.substring(1).toLowerCase(); // MODIFIED: Capitalization
+        return bcp47;
+    }
+  }
+  
+  // Helper function to get TranslateLanguage from BCP-47 code
+  mlkit_translation.TranslateLanguage? _getTranslateLanguageFromBcp47(String bcp47Code) { // MODIFIED: Return type is nullable
+    final String lowerCode = bcp47Code.toLowerCase();
+    if (lowerCode == 'und') return null; // ADDED: Handle "und"
+
+    for (final langEnum in mlkit_translation.TranslateLanguage.values) {
+      if (_getBcp47Code(langEnum) == lowerCode) {
+        return langEnum;
+      }
+    }
+    return null; // MODIFIED: Default to null if not found
+  }
+
+  // AI Feature Methods
+  Future<void> _identifyLanguage(String textToIdentify) async {
+    if (textToIdentify.isEmpty || textToIdentify == '(Không có nội dung)') {
+      if (mounted) {
+        setState(() {
+          _identifiedLanguage = "Không có nội dung để xác định.";
+          _languageIdentificationAttempted = true;
+        });
+      }
+      return;
+    }
+
+    if (kIsWeb) {
+      if (!mounted) return;
+      setState(() {
+        _identifiedLanguage = "Đang xác định ngôn ngữ (web)... ";
+        _translatedText = null;
+      });
+      try {
+        final String languageCode = await web_translation_utils.identifyLanguageJS(textToIdentify);
+        if (!mounted) return;
+
+        if (languageCode.startsWith('und_') || languageCode.isEmpty) {
+            setState(() {
+                _identifiedLanguage = "Lỗi xác định ngôn ngữ (web): ${languageCode.isEmpty ? 'empty_code' : languageCode}";
+                _languageIdentificationAttempted = true;
+                _sourceLanguage = null; // MODIFIED
+            });
+            return;
+        }
+        _sourceLanguage = _getTranslateLanguageFromBcp47(languageCode); // Can return null
+
+        setState(() {
+          if (_sourceLanguage == null) { // ADDED: Handle null from _getTranslateLanguageFromBcp47
+            _identifiedLanguage = "Ngôn ngữ không xác định (web): ($languageCode)";
+          } else {
+            _identifiedLanguage = "Ngôn ngữ gốc: ${_getLanguageDisplayName(_sourceLanguage)} ($languageCode)";
+          }
+          _languageIdentificationAttempted = true;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _identifiedLanguage = "Lỗi xác định ngôn ngữ (web API).";
+          _languageIdentificationAttempted = true;
+          _sourceLanguage = null; // MODIFIED
+        });
+        print("Error identifying language via Cloud API: $e");
+      }
+      return;
+    }
+
+    // Non-web (ML Kit) logic
+    if (!mounted) return;
+    setState(() {
+      _identifiedLanguage = "Đang xác định ngôn ngữ...";
+      _translatedText = null;
+    });
+
+    try {
+      final String languageCode = await _languageIdentifier.identifyLanguage(textToIdentify);
+      if (!mounted) return;
+
+      mlkit_translation.TranslateLanguage? identifiedSourceLang; // MODIFIED: Nullable
+      String displayLangCode = languageCode;
+
+      if (languageCode == "und") {
+        displayLangCode = "Không xác định";
+        identifiedSourceLang = null; // MODIFIED
+      } else {
+        identifiedSourceLang = _getTranslateLanguageFromBcp47(languageCode); // Can return null
+      }
+      
+      if (mounted) {
+        setState(() {
+          _sourceLanguage = identifiedSourceLang;
+          if (_sourceLanguage == null) { // ADDED: Handle null
+             _identifiedLanguage = "Ngôn ngữ gốc: Không xác định ($displayLangCode)";
+          } else {
+             _identifiedLanguage = "Ngôn ngữ gốc: ${_getLanguageDisplayName(_sourceLanguage)} ($displayLangCode)";
+          }
+          _languageIdentificationAttempted = true;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _identifiedLanguage = "Lỗi xác định ngôn ngữ.";
+        _languageIdentificationAttempted = true;
+        _sourceLanguage = null; // Ensure source language is null on error
+      });
+      print("Error identifying language with ML Kit: $e");
+    }
+  }
+
+  Future<void> _downloadModel(mlkit_translation.OnDeviceTranslatorModelManager modelManager, mlkit_translation.TranslateLanguage language, String languageNameForSnackBar) async { // Changed
+    if (kIsWeb) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tính năng tải model không khả dụng trên web.'))
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() { _isModelDownloading = true; });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Đang tải model ngôn ngữ: $languageNameForSnackBar...'))
+    );
+    final String bcp47Code = _getBcp47Code(language);
+    try {
+      final bool result = await modelManager.downloadModel(bcp47Code, isWifiRequired: false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result ? 'Đã tải xong model: $languageNameForSnackBar' : 'Không thể tải model: $languageNameForSnackBar'))
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi tải model $languageNameForSnackBar: $e'))
+        );
+      }
+      print("Error downloading model $bcp47Code: $e");
+    } finally {
+      if (mounted) {
+        setState(() { _isModelDownloading = false; });
+      }
+    }
+  }
+
+  Future<void> _translateText(String textToTranslate) async {
+    if (kIsWeb) {
+      if (!mounted) return;
+
+      final String currentSourceBcp47 = _getBcp47Code(_sourceLanguage); // Handles null _sourceLanguage
+      if (_identifiedLanguage.contains("Lỗi") ||
+          _identifiedLanguage.contains("Không có") ||
+          _identifiedLanguage.contains("Đang xác định") ||
+          _sourceLanguage == null || // ADDED: Check for null _sourceLanguage
+          currentSourceBcp47 == 'und') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Không thể dịch do chưa xác định rõ ngôn ngữ gốc (web).")),
+        );
+        return;
+      }
+
+      final String targetBcp47 = _getBcp47Code(_targetLanguage);
+
+      if (currentSourceBcp47 == targetBcp47) {
+        setState(() {
+          _translatedText = "Nội dung đã ở ngôn ngữ đích (web).";
+        });
+        return;
+      }
+      if (textToTranslate.isEmpty || textToTranslate == '(Không có nội dung)') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Không có nội dung để dịch (web).")),
+        );
+        return;
+      }
+
+      setState(() {
+        _isTranslating = true;
+        _translatedText = "Đang dịch (web)...";
+      });
+      try {
+        final String result = await web_translation_utils.translateTextJS(textToTranslate, currentSourceBcp47, targetBcp47);
+        if (!mounted) return;
+        setState(() {
+          _translatedText = result; // Display result or error message from API
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _translatedText = "Lỗi dịch thuật (web API).";
+        });
+        print("Error translating text via Cloud API: $e");
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isTranslating = false;
+          });
+        }
+      }
+      return;
+    }
+
+    // Non-web (ML Kit) logic
+    if (!mounted) return;
+    setState(() {
+      _translatedText = null; 
+      _isTranslating = true;
+    });
+
+    if (_sourceLanguage == null) { // ADDED: Check if source language is null before ML Kit translation
+        if (mounted) {
+            setState(() { _isTranslating = false; });
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Không thể dịch: Ngôn ngữ gốc không xác định.'))
+            );
+        }
+        return;
+    }
+
+    try {
+      _onDeviceTranslator?.close(); 
+      _onDeviceTranslator = mlkit_translation.OnDeviceTranslator(
+        sourceLanguage: _sourceLanguage!, // MODIFIED: Use null assertion after check
+        targetLanguage: _targetLanguage,
+      );
+
+      final modelManager = mlkit_translation.OnDeviceTranslatorModelManager();
+      final String sourceBcp47 = _getBcp47Code(_sourceLanguage); // Will be valid BCP-47 if _sourceLanguage not null
+      final String targetBcp47 = _getBcp47Code(_targetLanguage); // ADDED: Define targetBcp47
+
+      bool sourceModelReady = await modelManager.isModelDownloaded(sourceBcp47);
+      // English model is often bundled or doesn't require explicit download for some operations.
+      // However, for on-device translation, it's safer to check.
+      // if (_sourceLanguage == TranslateLanguage.english) sourceModelReady = true;
+
+
+      if (!sourceModelReady) {
+        // Use null assertion for _sourceLanguage as it's checked above
+        await _downloadModel(modelManager, _sourceLanguage!, _getLanguageDisplayName(_sourceLanguage));
+        if (!mounted) return; // Check mounted after async operation
+        sourceModelReady = await modelManager.isModelDownloaded(sourceBcp47);
+        if (!sourceModelReady) {
+           if (mounted) setState(() { _isTranslating = false; });
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Không thể tải model ngôn ngữ nguồn: ${_getLanguageDisplayName(_sourceLanguage)}'))
+          );
+           return; 
+        }
+      }
+
+      bool targetModelReady = await modelManager.isModelDownloaded(targetBcp47);
+      if (!targetModelReady) {
+        await _downloadModel(modelManager, _targetLanguage, _getLanguageDisplayName(_targetLanguage));
+        if (!mounted) return; // Check mounted after async operation
+        targetModelReady = await modelManager.isModelDownloaded(targetBcp47);
+         if (!targetModelReady){
+           if (mounted) setState(() { _isTranslating = false; });
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Không thể tải model ngôn ngữ đích: ${_getLanguageDisplayName(_targetLanguage)}'))
+          );
+           return; 
+        }
+      }
+      
+      final String result = await _onDeviceTranslator!.translateText(textToTranslate);
+      if (mounted) {
+        setState(() {
+          _translatedText = result;
+        });
+      }
+    } catch (e) {
+      print("Error translating text: $e");
+      if (mounted) {
+        setState(() {
+          _translatedText = "Lỗi dịch thuật: Vui lòng thử lại.";
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Lỗi dịch thuật: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+        });
+      }
+    }
+  }
+  // End AI Feature Methods
 }

@@ -11,9 +11,11 @@ class DisplaySettingsScreen extends StatefulWidget {
   State<DisplaySettingsScreen> createState() => _DisplaySettingsScreenState();
 }
 
-class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
-  String? _selectedEditorFont = 'Roboto'; // Default editor font
+class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String? _selectedEditorFont = 'Roboto'; // Default editor font
   double _selectedEditorFontSize = 14.0; // Default editor font size
+  
+  // Available font sizes that match compose screen
+  final List<double> _availableFontSizes = const [10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0];
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -23,26 +25,43 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     super.initState();
     _loadDisplaySettings();
   }
-
   Future<void> _loadDisplaySettings() async {
     User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
-    DocumentSnapshot userSettings = await _firestore.collection('user_settings').doc(currentUser.uid).get();
+    DocumentSnapshot userSettings = await _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .collection('settings')
+        .doc('editor')
+        .get();
+
     if (userSettings.exists && userSettings.data() != null) {
       Map<String, dynamic> data = userSettings.data() as Map<String, dynamic>;
       setState(() {
-        _selectedEditorFont = data['editorFontFamily'] ?? 'Roboto';
-        _selectedEditorFontSize = (data['editorFontSize'] as num?)?.toDouble() ?? 14.0;
+        _selectedEditorFont = data['fontFamily'] ?? 'Roboto';
+        final loadedFontSize = (data['fontSize'] as num?)?.toDouble() ?? 14.0;
+        // Ensure the loaded font size is in our available list
+        if (_availableFontSizes.contains(loadedFontSize)) {
+          _selectedEditorFontSize = loadedFontSize;
+        } else {
+          // Find the closest available font size
+          _selectedEditorFontSize = _availableFontSizes.reduce((a, b) => 
+            (a - loadedFontSize).abs() < (b - loadedFontSize).abs() ? a : b);
+        }
       });
     } else {
-      await _firestore.collection('user_settings').doc(currentUser.uid).set({
-        'editorFontFamily': _selectedEditorFont,
-        'editorFontSize': _selectedEditorFontSize,
-      }, SetOptions(merge: true));
+      await _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('settings')
+          .doc('editor')
+          .set({
+        'fontFamily': _selectedEditorFont,
+        'fontSize': _selectedEditorFontSize,
+      });
     }
   }
-
   Future<void> _updateDisplaySettings({bool? newThemeValue}) async {
     User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
@@ -53,9 +72,15 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
       await themeProvider.toggleTheme(newThemeValue, currentUser.uid);
     }
 
-    await _firestore.collection('user_settings').doc(currentUser.uid).set({
-      'editorFontFamily': _selectedEditorFont,
-      'editorFontSize': _selectedEditorFontSize,
+    // Save editor settings to the same location as compose screen
+    await _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .collection('settings')
+        .doc('editor')
+        .set({
+      'fontFamily': _selectedEditorFont,
+      'fontSize': _selectedEditorFontSize,
     }, SetOptions(merge: true));
   }
 
@@ -156,18 +181,20 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                   _updateDisplaySettings();
                 },
               ),
-            ),
-            ListTile(
+            ),            ListTile(
               title: Text('Editor Font Size: ${_selectedEditorFontSize.toInt()}', style: TextStyle(color: primaryTextColor)),
               subtitle: Slider(
                 value: _selectedEditorFontSize,
-                min: 10,
-                max: 24,
-                divisions: 14,
+                min: _availableFontSizes.first,
+                max: _availableFontSizes.last,
+                divisions: _availableFontSizes.length - 1,
                 label: _selectedEditorFontSize.round().toString(),
                 onChanged: (double value) {
+                  // Find the closest available font size
+                  final closestSize = _availableFontSizes.reduce((a, b) => 
+                    (a - value).abs() < (b - value).abs() ? a : b);
                   setState(() {
-                    _selectedEditorFontSize = value;
+                    _selectedEditorFontSize = closestSize;
                   });
                   _updateDisplaySettings();
                 },
