@@ -125,15 +125,12 @@ class _NotificationSettingsScreenState
                           return Colors.grey[500];
                         }),
                         trackColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
-                          // Nếu đang bật (selected) và ở light mode thì nền track là trắng hoàn toàn
                           if (!isDarkMode && states.contains(MaterialState.selected)) {
                             return Colors.white;
                           }
-                          // Nếu đang bật (selected) và ở dark mode thì nền track là màu xám đậm
                           if (isDarkMode && states.contains(MaterialState.selected)) {
                             return const Color(0xFF3c4043);
                           }
-                          // Mặc định
                           return null;
                         }),
                       ),

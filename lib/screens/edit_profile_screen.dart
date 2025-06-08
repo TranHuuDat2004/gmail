@@ -1,21 +1,21 @@
-// lib/edit_profile_screen.dart
-import 'dart:io'; // Để làm việc với File khi chọn ảnh
-import 'dart:typed_data'; // THÊM: Để làm việc với Uint8List cho web
-import 'package:file_picker/file_picker.dart'; // THAY ĐỔI: Sử dụng file_picker
-import 'package:flutter/foundation.dart'; // THÊM: Để kiểm tra kIsWeb
+
+import 'dart:io'; 
+import 'dart:typed_data'; 
+import 'package:file_picker/file_picker.dart'; 
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
-// import 'package:image_picker/image_picker.dart'; // XÓA: Không cần image_picker nữa
+
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
   final ImageProvider? currentAvatar;
-  final String? currentInitial; // THÊM: Để hiển thị ký tự đầu nếu không có avatar
+  final String? currentInitial; 
 
   const EditProfileScreen({
     super.key,
     required this.currentName,
     this.currentAvatar,
-    this.currentInitial, // THÊM
+    this.currentInitial, 
   });
 
   @override
@@ -24,90 +24,53 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
-  File? _pickedImageFile; // Để lưu file ảnh đã chọn cho mobile
-  Uint8List? _pickedImageBytes; // THÊM: Để lưu bytes ảnh đã chọn cho web
-
-  // final ImagePicker _picker = ImagePicker(); // XÓA: Không cần _picker của image_picker
+  File? _pickedImageFile; 
+  Uint8List? _pickedImageBytes; 
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.currentName);
-    // _newAvatarImage = widget.currentAvatar; // Không cần gán ở đây nữa
   }
 
-  Future<void> _pickImage() async { // THAY ĐỔI: Không cần ImageSource nữa
+  Future<void> _pickImage() async { 
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.image,
-        allowMultiple: false, // Chỉ cho phép chọn 1 ảnh
+        allowMultiple: false, 
       );
 
       if (result != null && result.files.isNotEmpty) {
         if (kIsWeb) {
-          // Trên web, lấy bytes của file
           final bytes = result.files.first.bytes;
           if (bytes != null) {
             setState(() {
               _pickedImageBytes = bytes;
-              _pickedImageFile = null; // Đảm bảo file được clear
+              _pickedImageFile = null; 
             });
           }
         } else {
-          // Trên mobile, lấy đường dẫn file
           final path = result.files.first.path;
           if (path != null) {
             setState(() {
               _pickedImageFile = File(path);
-              _pickedImageBytes = null; // Đảm bảo bytes được clear
+              _pickedImageBytes = null; 
             });
           }
         }
       }
     } catch (e) {
       if (mounted) {
-        final theme = Theme.of(context); // Get theme for SnackBar
+        final theme = Theme.of(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Không thể chọn ảnh: $e'),
-            backgroundColor: theme.colorScheme.error, // Use theme error color
+            backgroundColor: theme.colorScheme.error, 
           ),
         );
       }
     }
   }
-
-  // void _showImageSourceActionSheet(BuildContext context) { // XÓA: Phương thức này không còn cần thiết với file_picker
-  //   showModalBottomSheet(
-  //     context: context,
-  //     backgroundColor: Colors.white,
-  //     builder: (BuildContext bc) {
-  //       return SafeArea(
-  //         child: Wrap(
-  //           children: <Widget>[
-  //             ListTile(
-  //               leading: const Icon(Icons.photo_library),
-  //               title: const Text('Chọn từ thư viện'),
-  //               onTap: () {
-  //                 _pickImage(ImageSource.gallery);
-  //                 Navigator.of(context).pop();
-  //               },
-  //             ),
-  //             ListTile(
-  //               leading: const Icon(Icons.photo_camera),
-  //               title: const Text('Chụp ảnh mới'),
-  //               onTap: () {
-  //                 _pickImage(ImageSource.camera);
-  //                 Navigator.of(context).pop();
-  //               },
-  //             ),
-  //           ],
-  //         ),
-  //       );
-  //     },
-  //   );
-  // }
-
   @override
   void dispose() {
     _nameController.dispose();
@@ -142,7 +105,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       appBar: AppBar(
         title: Text('Chỉnh sửa Hồ sơ', style: TextStyle(color: appBarTextColor)),
         backgroundColor: appBarBackgroundColor, 
-        foregroundColor: appBarTextColor, // For title and potentially other elements if not overridden
+        foregroundColor: appBarTextColor, 
         elevation: isDarkMode ? 0 : 1,
         iconTheme: IconThemeData(color: appBarIconColor), 
         actions: [
@@ -214,7 +177,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     decoration: BoxDecoration(
                       color: cameraIconBackgroundColor, 
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2), // White border remains for contrast
+                      border: Border.all(color: Colors.white, width: 2), 
                     ),
                     child: Icon(Icons.camera_alt, color: cameraIconColor, size: 20), 
                   )
@@ -232,7 +195,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(height: 40),
             TextField(
               controller: _nameController,
-              style: TextStyle(color: isDarkMode ? Colors.grey[200] : Colors.black87), // Text input color
+              style: TextStyle(color: isDarkMode ? Colors.grey[200] : Colors.black87), 
               decoration: InputDecoration(
                 labelText: 'Tên hiển thị',
                 labelStyle: TextStyle(color: textFieldLabelColor),
@@ -242,11 +205,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5), // Use theme primary for focused border
+                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5), 
                 ),
                 prefixIcon: Icon(Icons.person_outline, color: textFieldIconColor),
-                // Ensure hint text is also themed if you add one
-                // hintStyle: TextStyle(color: isDarkMode ? Colors.grey[600] : Colors.grey[400]),
               ),
             ),
             const SizedBox(height: 20),

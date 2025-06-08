@@ -31,7 +31,6 @@ class _SearchOverlayScreenState extends State<SearchOverlayScreen> {
           ),
           style: const TextStyle(color: Colors.black87),
           onChanged: (value) {
-            // TODO: implement search filtering
           },
         ),
         actions: [

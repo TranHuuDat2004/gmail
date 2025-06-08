@@ -1,17 +1,15 @@
-// lib/features/profile/profile_screen.dart (Hoặc tên file của bạn)
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:gmail/screens/edit_profile_screen.dart'; // Sửa đường dẫn nếu cần
-import 'package:gmail/screens/change_password_screen.dart'; // Sửa đường dẫn
-// THÊM IMPORT CHO MÀN HÌNH CÀI ĐẶT 2FA
+import 'package:gmail/screens/edit_profile_screen.dart'; 
+import 'package:gmail/screens/change_password_screen.dart'; 
 import 'package:gmail/screens/setup_2fa_screen.dart'; 
-import 'package:gmail/screens/display_settings_screen.dart'; // ADD THIS IMPORT
-import 'package:gmail/screens/label_screen.dart'; // ADD THIS IMPORT
-import 'package:gmail/screens/notification_settings_screen.dart'; // ADD THIS IMPORT
-import 'package:gmail/screens/auto_answer_mode_screen.dart'; // ADD THIS IMPORT
-import 'package:gmail/screens/search_screen.dart'; // ADD THIS IMPORT
-import 'package:pinput/pinput.dart'; // THÊM IMPORT CHO PINPUT
+import 'package:gmail/screens/display_settings_screen.dart'; 
+import 'package:gmail/screens/label_screen.dart'; 
+import 'package:gmail/screens/notification_settings_screen.dart'; 
+import 'package:gmail/screens/auto_answer_mode_screen.dart'; 
+import 'package:gmail/screens/search_screen.dart'; 
+import 'package:pinput/pinput.dart'; 
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,21 +30,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _userName = "Đang tải...";
   String _userInitial = "";
   String? _userPhoneNumber;
-  ImageProvider? _userAvatarImage; // Sẽ là NetworkImage, FileImage hoặc AssetImage
-  String? _userAvatarUrl; // URL từ Firestore
+  ImageProvider? _userAvatarImage; 
+  String? _userAvatarUrl; 
 
   bool _isLoading = true;
   bool _isUploadingAvatar = false;
-  bool _is2FAEnabled = false; // THÊM: Biến trạng thái cho 2FA
-  String? _currentSecurityPin; // THÊM: Lưu mã PIN hiện tại của người dùng
-  int _pinAttempts = 0; // THÊM: Đếm số lần nhập PIN sai
-  DateTime? _lockoutEndTime; // THÊM: Thời điểm kết thúc khóa
-  bool _avatarWasUpdatedInSession = false; // ADDED: To track avatar changes
+  bool _is2FAEnabled = false; 
+  String? _currentSecurityPin; 
+  int _pinAttempts = 0; 
+  DateTime? _lockoutEndTime; 
+  bool _avatarWasUpdatedInSession = false; 
 
-  // Thêm biến để quản lý tab đang active
   String _activeTab = "Personal info";
 
-  // ĐỊNH NGHĨA PIN THEMES ĐỂ TÁI SỬ DỤNG
   PinTheme _defaultPinTheme(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return PinTheme(
@@ -94,7 +90,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     User? currentUser = _auth.currentUser;
     if (currentUser == null) {
-      // Xử lý trường hợp người dùng chưa đăng nhập (ví dụ: điều hướng về login)
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -111,12 +106,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted && userDoc.exists) {
         Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
         _userName = data['name'] ?? 'Chưa có tên';
-        _userPhoneNumber = data['phone']; // Có thể null
-        _userAvatarUrl = data['avatarUrl']; // Có thể null
-        _is2FAEnabled = data['is2FAEnabled'] ?? false; // THÊM: Tải trạng thái 2FA từ Firestore
-        _currentSecurityPin = data['securityPin']; // THÊM: Tải mã PIN hiện tại
+        _userPhoneNumber = data['phone']; 
+        _userAvatarUrl = data['avatarUrl']; 
+        _is2FAEnabled = data['is2FAEnabled'] ?? false; 
+        _currentSecurityPin = data['securityPin']; 
 
-        // Khi load avatar, luôn fallback về AssetImage nếu không có avatarUrl
         if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty) {
           _userAvatarImage = NetworkImage(_userAvatarUrl!);
         } else {
@@ -124,10 +118,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         if (_userName.isNotEmpty && _userName != "Đang tải..." && _userName != 'Chưa có tên') {
-          // Cập nhật logic: Luôn lấy ký tự đầu tiên của toàn bộ tên
           _userInitial = _userName[0].toUpperCase(); 
         } else {
-          _userInitial = "?"; // Hoặc một ký tự mặc định khác
+          _userInitial = "?"; 
         }
       } else {
         _userName = "Không tìm thấy dữ liệu";
@@ -151,9 +144,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => EditProfileScreen(
-          currentName: _userName, // Ensure currentName is passed
-          currentAvatar: _userAvatarImage, // Truyền ImageProvider hiện tại
-          currentInitial: _userInitial, // Pass the user's initial
+          currentName: _userName, 
+          currentAvatar: _userAvatarImage, 
+          currentInitial: _userInitial, 
         ),
       ),
     );
@@ -163,18 +156,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       User? currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      // Cập nhật tên
       if (result['name'] != null && result['name'] != _userName) {
         _userName = result['name'];
         await _firestore.collection('users').doc(currentUser.uid).update({'name': _userName});
         if (_userName.isNotEmpty) {
-          // Cập nhật logic: Luôn lấy ký tự đầu tiên của toàn bộ tên
           _userInitial = _userName[0].toUpperCase(); 
         }
         hasChanges = true;
       }
 
-      // Cập nhật avatar
       File? avatarFile = result['avatarFile'] as File?;
       Uint8List? avatarBytes = result['avatarBytes'] as Uint8List?;
 
@@ -183,18 +173,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() { _isUploadingAvatar = true; });
         }
         try {
-          String actualFileName = '${DateTime.now().millisecondsSinceEpoch}.jpg'; // Filename without UID prefix
+          String actualFileName = '${DateTime.now().millisecondsSinceEpoch}.jpg'; 
           
-          // Corrected path structure to match /avatars/{userId}/{fileName}
           Reference storageRef = _storage.ref().child('avatars/${currentUser.uid}/$actualFileName');
           UploadTask uploadTask;
 
-          if (avatarBytes != null) { // Ưu tiên bytes cho web
+          if (avatarBytes != null) { 
             uploadTask = storageRef.putData(avatarBytes);
-          } else if (avatarFile != null) { // Sau đó là file cho mobile
+          } else if (avatarFile != null) { 
             uploadTask = storageRef.putFile(avatarFile);
           } else {
-            // Should not happen if logic is correct, but as a fallback:
             if (mounted) setState(() { _isUploadingAvatar = false; });
             return;
           }
@@ -205,12 +193,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await _firestore.collection('users').doc(currentUser.uid).update({'avatarUrl': downloadUrl});
           if (mounted) {
             _userAvatarUrl = downloadUrl;
-            _userAvatarImage = NetworkImage(downloadUrl); // Cập nhật để hiển thị ngay
-            _avatarWasUpdatedInSession = true; // CHANGED: Set flag to true
+            _userAvatarImage = NetworkImage(downloadUrl); 
+            _avatarWasUpdatedInSession = true; 
           }
           hasChanges = true;
         } catch (e) {
-          // print("Lỗi tải avatar: $e");
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Lỗi tải lên avatar. Vui lòng thử lại.')),
@@ -223,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
       if (hasChanges && mounted) {
-        setState(() {}); // Cập nhật UI nếu có thay đổi
+        setState(() {}); 
       }
     }
   }
@@ -284,7 +271,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: CircleAvatar(
               backgroundColor: activeTabColor,
               backgroundImage: _userAvatarImage ?? const AssetImage('assets/images/default_avatar.png'),
-              child: null, // Ensures no icon or text is overlaid
+              child: null, 
             ),
           ),
         ],
@@ -325,8 +312,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-        ), // KẾT THÚC bottom
-      ), // KẾT THÚC AppBar
+        ), 
+      ), 
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -343,12 +330,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
         ],
-      ), // KẾT THÚC body Stack
+      ), 
       backgroundColor: scaffoldBackgroundColor,
-    ); // KẾT THÚC Scaffold
+    ); 
   }
-  // LOẠI BỎ HÀM _buildHomeContent()
-  // Widget _buildHomeContent() { ... }
 
   Widget _buildPersonalInfoContent(BuildContext context) { // Add context
     final theme = Theme.of(context);
@@ -373,8 +358,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context: context, // Pass context
                 title: "Avatar",
                 value: "View or change your avatar",
-                currentAvatarForDisplay: _userAvatarImage, // Truyền _userAvatarImage
-                initialForDisplay: _userInitial, // Truyền _userInitial
+                currentAvatarForDisplay: _userAvatarImage, 
+                initialForDisplay: _userInitial, 
                 onTap: _navigateToEditProfile),
             _buildProfileListItem(
                 context: context, // Pass context
@@ -387,7 +372,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.phone_outlined,
                 title: "Phone",
                 value: _userPhoneNumber ?? "Add recovery phone",
-                onTap: null // THAY ĐỔI: Không cho phép onTap cho mục Phone
+                onTap: null 
                 ),
           ],        ),
         const SizedBox(height: 20),
@@ -490,7 +475,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       formatValidationError = "Vui lòng nhập mã PIN.";
                                     } else if (pin.length != 6) {
                                       formatValidationError = "Mã PIN phải gồm 6 chữ số.";
-                                    } else if (!RegExp(r'^[0-9]{6}$').hasMatch(pin)) { // CORRECTED RegExp
+                                    } else if (!RegExp(r'^[0-9]{6}$').hasMatch(pin)) { 
                                       formatValidationError = "Mã PIN chỉ được chứa số.";
                                     }
 
@@ -596,7 +581,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             
             Divider(color: isDarkMode ? Colors.grey[700] : Colors.grey[300]),
-              // Thông báo
             _buildSettingsListItem(
               context: context,
               icon: Icons.notifications_outlined,
@@ -614,7 +598,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             
             Divider(color: isDarkMode ? Colors.grey[700] : Colors.grey[300]),
             
-            // Chế độ tự động trả lời
             _buildSettingsListItem(
               context: context,
               icon: Icons.reply_all,
@@ -655,7 +638,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Hàm helper mới cho các mục cài đặt (tương tự _buildProfileListItem nhưng có thể tùy chỉnh)
   Widget _buildSettingsListItem({
     required BuildContext context, // Add context
     required IconData icon,
@@ -744,8 +726,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final currentWidget = children[index];
           bool shouldAddDivider = false;
           if (currentWidget is ListTile && !isLastItem) {
-            // Kiểm tra xem widget tiếp theo có phải là ListTile không để quyết định có thêm Divider không
-            // Điều này giúp tránh Divider nếu item cuối cùng không phải ListTile hoặc là item cuối cùng.
             if (index + 1 < children.length && children[index+1] is ListTile) {
                shouldAddDivider = true;
             }
@@ -767,14 +747,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Cập nhật _buildProfileListItem để hiển thị avatar đúng
   Widget _buildProfileListItem({
     required BuildContext context, // Add context
     IconData? icon,
     required String title,
     required String value,
     ImageProvider? currentAvatarForDisplay,
-    String? initialForDisplay, // This parameter is no longer used for displaying initials
+    String? initialForDisplay,
     VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
@@ -784,8 +763,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final subtitleColor = isDarkMode ? Colors.grey[500] : Colors.grey[600];
     final trailingIconColor = isDarkMode ? Colors.grey[600] : Colors.grey[500];
     final avatarPlaceholderColor = isDarkMode ? Colors.blue[300] : Colors.blue[700];
-    // final avatarInitialTextColor = isDarkMode ? Colors.black87 : Colors.white; // No longer needed
-
 
     Widget leadingWidget;
     if (title == "Avatar") {
@@ -793,7 +770,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundImage: currentAvatarForDisplay ?? const AssetImage('assets/images/default_avatar.png'),
         backgroundColor: avatarPlaceholderColor,
         radius: 18,
-        // Remove the child that displays the initial
       );
     } else {
       leadingWidget = Icon(icon, color: iconColor);
@@ -817,7 +793,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // HÀM MỚI ĐỂ BUILD MỤC 2FA VỚI SWITCH
   Widget _buildTwoFactorAuthItem(BuildContext context) { // Add context
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
@@ -1039,7 +1014,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 }
               } else if (enteredPin != null && _currentSecurityPin != null && enteredPin == _currentSecurityPin) {
-                // PIN chính xác, proceed to disable 2FA
                 await _firestore.collection('users').doc(currentUser.uid).update({
                   'is2FAEnabled': false,
                   'securityPin': FieldValue.delete(), 
@@ -1055,7 +1029,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       content: Text("Xác thực 2 yếu tố đã được tắt thành công.")));
                 }
               } else if (enteredPin == null) {
-                // User cancelled the PIN dialog - do nothing, 2FA remains as is.
               }
             }
           }
@@ -1065,7 +1038,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         inactiveThumbColor: switchInactiveThumbColor,
         inactiveTrackColor: switchInactiveTrackColor,
         trackOutlineColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
-          // Apply border only when in light mode and the switch is in its "off" state (2FA disabled)
           if (!isDarkMode && !states.contains(MaterialState.selected)) {
             return Colors.grey[700]; // Dark grey border for the track in light mode
           }

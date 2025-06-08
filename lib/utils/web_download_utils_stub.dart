@@ -1,4 +1,3 @@
-// Stub implementation for non-web platforms
 import 'package:flutter/material.dart';
 
 Future<void> actualDownloadFileForWeb(

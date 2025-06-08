@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
-import 'search_overlay_screen.dart';
 import 'search_screen.dart';
 import '../widgets/custom_drawer.dart';
 import 'email_detail_screen.dart';
@@ -30,7 +29,7 @@ class _GmailUIState extends State<GmailUI> {
 
   List<Map<String, dynamic>> _emails = [];
   bool _isLoadingEmails = true;
-  StreamSubscription? _emailStreamSubscription; // Added for real-time updates
+  StreamSubscription? _emailStreamSubscription; 
 
   final List<String> userLabels = [];
 
@@ -40,10 +39,10 @@ class _GmailUIState extends State<GmailUI> {
   void initState() {
     super.initState();
     _loadCurrentUserAvatar();
-    _fetchEmails(); // Initial fetch
+    _fetchEmails(); 
     _searchController.addListener(() {
       if (_searchController.text.trim().isEmpty) {
-        _fetchEmails(); // Re-fetch (and listen) when search is cleared
+        _fetchEmails(); 
       }
     });
   }
@@ -51,7 +50,6 @@ class _GmailUIState extends State<GmailUI> {
   Future<void> _fetchEmails() async {
   if (!mounted) return;
 
-  // Cancel any existing stream subscription before starting a new one or a get()
   await _emailStreamSubscription?.cancel();
   _emailStreamSubscription = null;
 
@@ -223,7 +221,7 @@ class _GmailUIState extends State<GmailUI> {
           _isLoadingEmails = false;
         });
       }
-    } else { // Handles "Inbox", "All inboxes", "Sent", and custom labels with real-time updates
+    } else { 
       Query query = _firestore.collection('emails');
       query = query.where('involvedUserIds', arrayContains: currentUser.uid);
       query = query.orderBy('timestamp', descending: true);
@@ -259,45 +257,34 @@ class _GmailUIState extends State<GmailUI> {
         }).toList();
 
         List<Map<String, dynamic>> emailsToDisplay;
-        if (selectedLabel == "All inboxes" || selectedLabel == "Inbox") { // Treat "Inbox" as "All inboxes" for this main stream
+        if (selectedLabel == "All inboxes" || selectedLabel == "Inbox") { 
           emailsToDisplay = filteredEmails.where((email) {
-            // For "Inbox", we typically show emails that are not explicitly in other mailboxes like Sent, Drafts, Spam (if implemented)
-            // and are addressed to the user or the user is involved.
-            // The 'involvedUserIds' and not trashed/deleted filter already covers much of this.
-            // If "Inbox" label is explicitly used, filter by it. Otherwise, show general incoming mail.
             final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
             if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
               final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
               if (userSpecificLabels.contains("Inbox")) return true;
-              // If no specific "Inbox" label, but it's in "All inboxes" context, include if not explicitly in another special folder by label
               if (selectedLabel == "All inboxes" && 
                   !userSpecificLabels.contains("Sent") && 
                   !userSpecificLabels.contains("Drafts") &&
-                  !userSpecificLabels.contains("Trash") // Already filtered by isTrashedBy
+                  !userSpecificLabels.contains("Trash") 
                  ) {
-                // Heuristic: if an email has NO user-specific labels, it's often considered to be in the "Inbox".
-                // Or if it has labels but none are "Sent", "Drafts".
-                // This part might need refinement based on exact definition of "Inbox" vs "All inboxes"
                 if (userSpecificLabels.isEmpty) return true; 
                 bool isInSpecialFolder = userSpecificLabels.any((l) => ["Sent", "Drafts"].contains(l));
                 if (!isInSpecialFolder) return true;
               }
             } else if (selectedLabel == "All inboxes") { 
-              // If no labels for the user, it's considered in "All inboxes" (and effectively inbox)
               return true;
             }
-             // Fallback for "Inbox" label specifically if it's a custom label scenario
             if (selectedLabel == "Inbox" && emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
                  final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
                  return userSpecificLabels.contains("Inbox");
             }
-            return selectedLabel == "All inboxes"; // Default for all inboxes if no other condition met
+            return selectedLabel == "All inboxes"; 
           }).toList();
         } else if (selectedLabel == "Sent") {
             emailsToDisplay = filteredEmails.where((email) {
             final fromMatches = (email['from'] as String?)?.toLowerCase() == currentUser.email?.toLowerCase();
             final senderIdMatches = email['senderId'] == currentUser.uid;
-            // Additionally, check for "Sent" label if it's explicitly applied
             final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
             bool hasSentLabel = false;
             if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
@@ -440,12 +427,10 @@ class _GmailUIState extends State<GmailUI> {
         return data;
       }).toList();
 
-      // Lọc theo từ khóa (subject, body, sender, ...), không phân biệt hoa thường
       final lowerKeyword = keyword.toLowerCase();
       final filteredEmails = allUserEmails.where((email) {
         final subject = (email['subject'] ?? '').toString().toLowerCase();
         final body = (email['body'] ?? '').toString().toLowerCase();
-        // Thêm kiểm tra các trường có thể chứa tên/email người gửi
         final senderDisplayName = (email['senderDisplayName'] ?? '').toString().toLowerCase();
         final senderEmail = (email['senderEmail'] ?? '').toString().toLowerCase();
         final from = (email['from'] ?? '').toString().toLowerCase();
@@ -469,10 +454,9 @@ class _GmailUIState extends State<GmailUI> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context); // Get the current theme
-    final bool isDarkMode = theme.brightness == Brightness.dark; // Check for dark mode
+    final theme = Theme.of(context); 
+    final bool isDarkMode = theme.brightness == Brightness.dark; 
 
-    // Define FAB colors based on theme
     final Color fabBackgroundColor = isDarkMode 
         ? const Color(0xFFC62828) // Dark red for dark mode
         : Colors.blue; // Blue for light mode
@@ -481,10 +465,10 @@ class _GmailUIState extends State<GmailUI> {
         : Colors.white; // White for light mode text/icon
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background, // Use theme color
+      backgroundColor: theme.colorScheme.background, 
       appBar: AppBar(
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface, // Use theme color
-        elevation: 0.0, // Keep elevation 0 as per previous settings
+        elevation: 0.0, 
         automaticallyImplyLeading: false,
         titleSpacing: 0,
         toolbarHeight: 70,
@@ -558,9 +542,9 @@ class _GmailUIState extends State<GmailUI> {
                     backgroundImage: (_userPhotoURL != null && _userPhotoURL!.isNotEmpty)
                         ? NetworkImage(_userPhotoURL!)
                         : const AssetImage('assets/images/default_avatar.png'),
-                    child: null, // Ensures no icon or text is overlaid on the backgroundImage
+                    child: null, 
                     backgroundColor: (_userPhotoURL == null || _userPhotoURL!.isEmpty)
-                        ? theme.colorScheme.primary // Fallback color if asset image is transparent or fails
+                        ? theme.colorScheme.primary 
                         : Colors.transparent,
                   ),
                 ),

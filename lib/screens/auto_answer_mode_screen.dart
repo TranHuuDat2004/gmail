@@ -29,7 +29,6 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
       return;
     }
     try {
-      // Load from user_settings collection first
       final userSettingsDoc = await _firestore
           .collection('user_settings')
           .doc(_currentUser!.uid)
@@ -45,7 +44,6 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
           _isLoading = false;
         });
       } else {
-        // Fallback to old settings location
         final doc = await _firestore
             .collection('users')
             .doc(_currentUser!.uid)
@@ -76,7 +74,6 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
   }  Future<void> _saveSettings() async {
     if (_currentUser == null) return;
     try {
-      // Save to user_settings collection with email field for auto reply lookup
       await _firestore
           .collection('user_settings')
           .doc(_currentUser!.uid)
@@ -84,11 +81,10 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
         'autoReplyEnabled': _isAutoAnswerEnabled,
         'autoReplySubject': _autoReplySubjectController.text.trim(),
         'autoReplyMessage': _autoReplyMessageController.text.trim(),
-        'email': _currentUser!.email, // Add email field for lookup
+        'email': _currentUser!.email, 
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Also save to old location for backward compatibility
       await _firestore
           .collection('users')
           .doc(_currentUser!.uid)
@@ -123,7 +119,6 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
     if (_currentUser == null) return;
     
     try {
-      // Save to user_settings collection with email field for auto reply lookup
       await _firestore
           .collection('user_settings')
           .doc(_currentUser!.uid)
@@ -131,11 +126,10 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
         'autoReplyEnabled': value,
         'autoReplySubject': _autoReplySubjectController.text.trim(),
         'autoReplyMessage': _autoReplyMessageController.text.trim(),
-        'email': _currentUser!.email, // Add email field for lookup
+        'email': _currentUser!.email, 
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Also save to old location for backward compatibility
       await _firestore
           .collection('users')
           .doc(_currentUser!.uid)
@@ -152,7 +146,7 @@ class _AutoAnswerModeScreenState extends State<AutoAnswerModeScreen> {
       print("Error updating auto answer toggle: $e");
       if (mounted) {
         setState(() {
-          _isAutoAnswerEnabled = !value; // Revert on error
+          _isAutoAnswerEnabled = !value; 
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi cập nhật cài đặt: $e')),

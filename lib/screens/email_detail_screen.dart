@@ -28,8 +28,8 @@ import '../utils/web_pdf_utils_stub.dart'
     as web_pdf_utils;
 
 // Conditional import for web translation
-import '../utils/web_translation_utils_stub.dart' // Ensure this file exists
-    if (dart.library.html) '../utils/web_translation_utils_web.dart' // Ensure this file exists
+import '../utils/web_translation_utils_stub.dart' 
+    if (dart.library.html) '../utils/web_translation_utils_web.dart' 
     as web_translation_utils;
 
 // Make sure these paths are correct for your project structure
@@ -38,8 +38,8 @@ import 'compose_email_screen.dart';
 import 'file_viewer_screen.dart';
 
 class EmailDetailScreen extends StatefulWidget {
-  final Map<String, dynamic> email; // email should have 'id', and potentially 'senderId'
-  final bool? isSentView; // ADDED: To indicate if this is a sent email view
+  final Map<String, dynamic> email; 
+  final bool? isSentView; 
   const EmailDetailScreen({super.key, required this.email, this.isSentView});
 
   @override
@@ -51,28 +51,25 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   late bool _isStarredLocally;
   late bool _isReadLocally;
   User? _currentUser;
-  // For fetched sender details
   String? _fetchedSenderDisplayNameForDetail;
   String? _fetchedSenderAvatarUrlForDetail;
-  // String _senderInitialLetterForDetail = '?'; // REMOVED
   bool _isLoadingSenderDetailsForDetail = true;
-    // For fetched recipient details (for Sent view)
   String? _fetchedRecipientAvatarUrl;
 
-  Map<String, double> _downloadProgress = {}; // Track download progress for each file
-  Set<String> _downloadingFiles = {}; // Track which files are being downloaded
-  bool _emailDataWasUpdated = false; // Ensure this flag is present
+  Map<String, double> _downloadProgress = {}; 
+  Set<String> _downloadingFiles = {}; 
+  bool _emailDataWasUpdated = false; 
 
   // AI Feature: Language Detection & Translation State Variables
   String _identifiedLanguage = "Đang xác định ngôn ngữ...";
   String? _translatedText;
   bool _isTranslating = false;
   bool _isModelDownloading = false;
-  bool _languageIdentificationAttempted = false; // To prevent multiple calls if content doesn't change
+  bool _languageIdentificationAttempted = false; 
 
   late final LanguageIdentifier _languageIdentifier;
   mlkit_translation.OnDeviceTranslator? _onDeviceTranslator;
-  mlkit_translation.TranslateLanguage? _sourceLanguage = mlkit_translation.TranslateLanguage.english; // MODIFIED: Made nullable
+  mlkit_translation.TranslateLanguage? _sourceLanguage = mlkit_translation.TranslateLanguage.english; 
   final mlkit_translation.TranslateLanguage _targetLanguage = mlkit_translation.TranslateLanguage.vietnamese;
 
 
@@ -81,17 +78,14 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     super.initState();
     _currentUser = FirebaseAuth.instance.currentUser;
 
-    // Initialize local star and read status based on current user and email data
-    // Trong initState() của EmailDetailScreen
     if (_currentUser != null) {
       Map<String, dynamic>? emailLabelsMap;
       if (widget.email['emailLabels'] != null) {
         try {
-          // Cố gắng ép kiểu một cách an toàn
           emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels']);
         } catch (e) {
           print("Error casting emailLabels: $e. Value: ${widget.email['emailLabels']}");
-          emailLabelsMap = null; // Hoặc xử lý mặc định
+          emailLabelsMap = null; 
         }
       }
       final userSpecificLabels = emailLabelsMap?[_currentUser!.uid] as List<dynamic>?;
@@ -103,7 +97,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           emailIsReadByMap = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
         } catch (e) {
           print("Error casting emailIsReadBy: $e. Value: ${widget.email['emailIsReadBy']}");
-          emailIsReadByMap = null; // Hoặc xử lý mặc định
+          emailIsReadByMap = null; 
         }
       }
       _isReadLocally = emailIsReadByMap?[_currentUser!.uid] as bool? ?? false;
@@ -115,20 +109,16 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
     if (!kIsWeb) {
       _languageIdentifier = LanguageIdentifier(confidenceThreshold: 0.5);
     } else {
-      // For web, we'll use the Cloud API. Initialize states accordingly.
       _identifiedLanguage = "Đang xác định ngôn ngữ (web)...";
-      _languageIdentificationAttempted = false; // Allow API call
+      _languageIdentificationAttempted = false; 
     }
 
-    // Fetch sender details (handles both received and current user for sent view)
-    _fetchSenderDetailsForDetailScreen(); // Ensure this is called
+    _fetchSenderDetailsForDetailScreen();
 
-    // Fetch recipient avatar if this is a Sent view
     if (widget.isSentView == true) {
       _fetchRecipientAvatarForSentView();
     }
 
-    // Automatically mark as read in Firestore if not already read by this user
     if (!_isReadLocally && _currentUser != null && widget.email['id'] != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -141,7 +131,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 if (mounted) {
                   setState(() {
                     _isReadLocally = true;
-                    // Update local email data immediately
+                    // Update local email data 
                     widget.email['emailIsReadBy'] = {
                       ...widget.email['emailIsReadBy'] ?? {},
                       _currentUser!.uid: true,
@@ -163,9 +153,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       _isLoadingSenderDetailsForDetail = true;
     });
 
-    // If it's a sent email, the "sender" is the current user.
     if (widget.isSentView == true && _currentUser != null) {
-        // Attempt to get more details from Firestore if available for current user
         try {
             DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).get();
             if (mounted && userDoc.exists) {
@@ -186,18 +174,15 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                 _isLoadingSenderDetailsForDetail = false;
             });
         }
-        return; // Early return for sent view
+        return; 
     }
 
 
     String? senderId = widget.email['senderId'] as String?;
     String? senderEmail = widget.email['senderEmail'] as String? ?? widget.email['from'] as String?;
     String fallbackDisplayName = widget.email['senderDisplayName'] as String? ??
-                                 senderEmail ??
+                                 senderEmail ??'Không rõ';
 
- 'Không rõ';
-
-    // Try to fetch by senderId first
     if (senderId != null && senderId.isNotEmpty) {
       try {
         DocumentSnapshot senderDoc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
@@ -205,16 +190,16 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           final data = senderDoc.data() as Map<String, dynamic>;
           _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
           _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
-        } else { // senderDoc does not exist or not mounted
+        } else { 
           _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
-          _fetchedSenderAvatarUrlForDetail = null; // No specific avatar if sender not found by ID
+          _fetchedSenderAvatarUrlForDetail = null;
         }
       } catch (e) {
         print('Error fetching sender details by ID for EmailDetailScreen: $e');
         _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
         _fetchedSenderAvatarUrlForDetail = null;
       }
-    } else if (senderEmail != null && senderEmail.isNotEmpty) { // If no senderId, try by email
+    } else if (senderEmail != null && senderEmail.isNotEmpty) { 
       try {
         QuerySnapshot senderQuery = await FirebaseFirestore.instance
             .collection('users')
@@ -226,7 +211,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           final data = senderDoc.data() as Map<String, dynamic>;
           _fetchedSenderDisplayNameForDetail = data['displayName'] as String? ?? data['name'] as String? ?? fallbackDisplayName;
           _fetchedSenderAvatarUrlForDetail = data['avatarUrl'] as String?;
-        } else { // No user found by email
+        } else { 
           _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
           _fetchedSenderAvatarUrlForDetail = null;
         }
@@ -235,7 +220,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
         _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
         _fetchedSenderAvatarUrlForDetail = null;
       }
-    } else { // No senderId and no senderEmail
+    } else { 
       _fetchedSenderDisplayNameForDetail = fallbackDisplayName;
       _fetchedSenderAvatarUrlForDetail = null;
     }
@@ -304,10 +289,10 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
       if (mounted) {
         setState(() {
           _isStarredLocally = newStarStatus;
-          widget.email['emailLabels'] = emailLabelsMap; // Update the local email map
-          widget.email['starred'] = newStarStatus;   // CRITICAL: Update 'starred' field in the local email map
+          widget.email['emailLabels'] = emailLabelsMap; 
+          widget.email['starred'] = newStarStatus;   
         });
-        _emailDataWasUpdated = true; // Set the flag
+        _emailDataWasUpdated = true; 
       }
     } catch (e) {
       print("Error updating star status for user $userId on email $emailId: $e");
@@ -326,7 +311,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
   Future<void> _toggleReadStatus() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final newReadStatus = !_isReadLocally;
-    final theme = Theme.of(context); // Get theme for SnackBar
+    final theme = Theme.of(context); 
 
     try {
       await FirebaseFirestore.instance
@@ -334,25 +319,22 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           .doc(widget.email['id'])
           .update({'emailIsReadBy.${_currentUser!.uid}': newReadStatus});
 
-      // ...
 if (mounted) {
   setState(() {
     _isReadLocally = newReadStatus;
-    // Đảm bảo kiểu dữ liệu khi cập nhật local email data
     Map<String, dynamic> currentEmailIsReadBy = {};
     if (widget.email['emailIsReadBy'] != null) {
       try {
         currentEmailIsReadBy = Map<String, dynamic>.from(widget.email['emailIsReadBy']);
       } catch (e) {
-        // Xử lý nếu không thể ép kiểu, có thể khởi tạo map rỗng
         print("Warning: Could not cast widget.email['emailIsReadBy'] to Map<String, dynamic>");
       }
     }
     widget.email['emailIsReadBy'] = {
-      ...currentEmailIsReadBy, // Spread map đã được ép kiểu đúng
+      ...currentEmailIsReadBy, 
       _currentUser!.uid: newReadStatus,
     };
-    _emailDataWasUpdated = true; // Đặt cờ này ở đây sau khi cập nhật thành công
+    _emailDataWasUpdated = true; 
   });
 }
 // 
@@ -380,10 +362,9 @@ Future<void> _deleteEmail() async {
 
   try {
     if (isInTrash) {
-      // User is performing "Delete Permanently" for their view
       await docRef.update({
         'permanentlyDeletedBy': FieldValue.arrayUnion([_currentUser!.uid]),
-        'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid]) // Remove from trash view
+        'isTrashedBy': FieldValue.arrayRemove([_currentUser!.uid]) 
       });
 
       if (mounted) {
@@ -395,7 +376,6 @@ Future<void> _deleteEmail() async {
           ),
         );
 
-        // Update local email data
         List<dynamic> permanentlyDeletedByList = List<dynamic>.from(widget.email['permanentlyDeletedBy'] ?? []);
         if (!permanentlyDeletedByList.contains(_currentUser!.uid)) {
           permanentlyDeletedByList.add(_currentUser!.uid);
@@ -407,10 +387,9 @@ Future<void> _deleteEmail() async {
         widget.email['isTrashedBy'] = isTrashedByList;
         
         _emailDataWasUpdated = true;
-        Navigator.pop(context, widget.email); // Or a specific result like 'marked_permanently_deleted' // REVERTED CHANGE
+        Navigator.pop(context, widget.email); 
       }
     } else {
-      // Move to trash
       await docRef.update({
         'isTrashedBy': FieldValue.arrayUnion([_currentUser!.uid])
       });
@@ -423,7 +402,6 @@ Future<void> _deleteEmail() async {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        // Update local email data
         List<dynamic> isTrashedByList = List<dynamic>.from(widget.email['isTrashedBy'] ?? []);
         if (!isTrashedByList.contains(_currentUser!.uid)) {
           isTrashedByList.add(_currentUser!.uid);
@@ -447,8 +425,6 @@ Future<void> _deleteEmail() async {
   }
 }
 
-  // lib/screens/email_detail_screen.dart
-
   void _assignLabels() async {
     if (_currentUser == null || widget.email['id'] == null) return;
     final theme = Theme.of(context);
@@ -457,7 +433,6 @@ Future<void> _deleteEmail() async {
     final emailId = widget.email['id'];
     final emailRef = FirebaseFirestore.instance.collection('emails').doc(emailId);
 
-    // Lấy danh sách nhãn của user
     final labelsSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
@@ -466,7 +441,6 @@ Future<void> _deleteEmail() async {
         .get();
     final List<String> allLabels = labelsSnapshot.docs.map((doc) => doc['name'] as String).toList();
 
-    // Lấy nhãn hiện tại của email
     Map<String, dynamic> emailLabelsMap = Map<String, dynamic>.from(widget.email['emailLabels'] ?? {});
     List<String> currentLabels = List<String>.from(emailLabelsMap[userId] ?? []);
     List<String> selectedLabels = List<String>.from(currentLabels);
@@ -474,7 +448,7 @@ Future<void> _deleteEmail() async {
     final result = await showDialog<List<String>>(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Bọc trong StatefulBuilder
+        return StatefulBuilder( 
           builder: (context, dialogSetState) {
             final dialogTheme = Theme.of(context);
             final isDialogDark = dialogTheme.brightness == Brightness.dark;
@@ -531,16 +505,13 @@ Future<void> _deleteEmail() async {
                               itemCount: allLabels.length,
                               itemBuilder: (context, idx) {
                                 final label = allLabels[idx];
-                                // Sửa: Bọc bằng Theme để tùy chỉnh Checkbox
                                 return Theme(
                                   data: Theme.of(context).copyWith(
                                     checkboxTheme: CheckboxThemeData(
                                       side: MaterialStateBorderSide.resolveWith((states) {
-                                        // Nếu đang ở dark mode, dùng màu xám sáng cho viền
                                         if (isDialogDark) {
                                           return BorderSide(color: Colors.grey.shade400, width: 1.5);
                                         }
-                                        // Giữ màu mặc định hoặc một màu khác cho light mode
                                         return BorderSide(color: Colors.grey.shade600, width: 1.5);
                                       }),
                                     ),
@@ -610,9 +581,6 @@ Future<void> _deleteEmail() async {
     }
   }
 
-  // lib/screens/email_detail_screen.dart
-
-  // Thêm hàm mới này
     Future<String?> _promptForNewLabel() async {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
@@ -638,7 +606,6 @@ Future<void> _deleteEmail() async {
             child: const Text('Hủy'),
           ),
           ElevatedButton(
-            // SỬA: Thêm style vào đây để nút "Tạo" có giao diện nhất quán
             style: ElevatedButton.styleFrom(
               backgroundColor: isDarkMode ? Colors.blue[600] : Colors.blue[700],
               foregroundColor: Colors.white,
@@ -856,8 +823,6 @@ Future<void> _deleteEmail() async {
         throw Exception('Web download chỉ hoạt động trên nền tảng web');
       }
     } catch (e) {
-      // The actualDownloadFileForWeb will throw, and we catch it here
-      // to show the error SnackBar using the EmailDetailScreen's context.
       _showErrorSnackBar('Lỗi web download: $e');
     }
   }
@@ -1063,9 +1028,7 @@ Future<void> _deleteEmail() async {
 
     if (isSentEmail) {
       // For sent emails, show recipient info
-      final List<dynamic>? toRecipients = email['toRecipients'] as List<dynamic>?;
-      // final List<dynamic>? recipientDisplayNames = email['recipientDisplayNames'] as List<dynamic>?; // This was marked as unused by analyzer
-      
+      final List<dynamic>? toRecipients = email['toRecipients'] as List<dynamic>?;      
       if (toRecipients != null && toRecipients.isNotEmpty) {
         final firstRecipient = toRecipients.first;
         if (firstRecipient is Map && firstRecipient['email'] != null) {
@@ -1081,8 +1044,7 @@ Future<void> _deleteEmail() async {
         recipientDisplayToShow = senderDisplayNameToShow;
       }
       
-      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl; // Assuming this is fetched correctly
-      // senderInitialToShow = senderDisplayNameToShow.isNotEmpty ? senderDisplayNameToShow[0].toUpperCase() : '?';
+      senderAvatarUrlToShow = _fetchedRecipientAvatarUrl; 
     } else {
       // For received emails, show sender info
       if (_isLoadingSenderDetailsForDetail) {
@@ -1098,7 +1060,6 @@ Future<void> _deleteEmail() async {
                                   'Không rõ';
       }
       senderAvatarUrlToShow = _fetchedSenderAvatarUrlForDetail ?? email['senderAvatarUrl'] as String?;
-      // senderInitialToShow = _senderInitialLetterForDetail;
     }
 
     // Recipients for meta details
@@ -1116,9 +1077,8 @@ Future<void> _deleteEmail() async {
         })
         .where((s) => s.isNotEmpty)
         .toList() ?? [];
-    // Sửa: Thêm dòng này để lấy danh sách Bcc
     final List<String> bccRecipientsList = (email['bccRecipients'] as List<dynamic>?)
-        ?.map((e) => e.toString()) // Giả sử bcc chỉ là list các string email
+        ?.map((e) => e.toString()) 
         .where((s) => s.isNotEmpty)
         .toList() ?? [];
     // Define colors based on theme
@@ -1135,17 +1095,15 @@ Future<void> _deleteEmail() async {
     final dividerColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
     final attachmentHeaderColor = isDarkMode ? Colors.grey[300] : Colors.black87;    final bottomNavBarBackgroundColor = isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
     final bottomNavBarBorderColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
-    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF3C4043) : Colors.blue[700]; // Dark grey background for dark mode
-    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white; // Light blue text/icon for dark mode
+    final actionButtonBackgroundColor = isDarkMode ? const Color(0xFF3C4043) : Colors.blue[700]; 
+    final actionButtonForegroundColor = isDarkMode ? const Color(0xFF8AB4F8) : Colors.white; 
 
-    final Color translateButtonIconColor = isDarkMode ? actionButtonForegroundColor : Colors.white; // White for both modes to stand out on blue button
+    final Color translateButtonIconColor = isDarkMode ? actionButtonForegroundColor : Colors.white; 
 
-    // AI Feature: Call identify language if not already attempted and body is available
-    // This condition should now work for both web and mobile
     if (!_languageIdentificationAttempted && emailBodyToDisplay.isNotEmpty && emailBodyToDisplay != '(Không có nội dung)') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _identifyLanguage(emailBodyToDisplay); // _identifyLanguage handles kIsWeb internally
+          _identifyLanguage(emailBodyToDisplay); 
         }
       });
     }
@@ -1211,7 +1169,7 @@ Future<void> _deleteEmail() async {
                 children: [
                   Expanded(
                     child: Text(
-                      displaySubject // Use displaySubject here
+                      displaySubject 
                       ,
                       style: TextStyle(
                         fontSize: 22,
@@ -1233,7 +1191,7 @@ Future<void> _deleteEmail() async {
                   backgroundImage: (senderAvatarUrlToShow != null && senderAvatarUrlToShow.isNotEmpty)
                       ? NetworkImage(senderAvatarUrlToShow)
                       : const AssetImage('assets/images/default_avatar.png'),
-                  child: null, // Always null to prevent initial over asset
+                  child: null, 
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1289,7 +1247,6 @@ Future<void> _deleteEmail() async {
                       _buildMetaDetailRow(context, "From", email['senderEmail'] ?? email['from'] ?? 'Không rõ'),
                       _buildMetaDetailRow(context, "To", toRecipientsList.join(', ')),
                       if (ccRecipientsList.isNotEmpty) _buildMetaDetailRow(context, "Cc", ccRecipientsList.join(', ')),
-                      // Sửa: Thêm điều kiện hiển thị Bcc chỉ cho người gửi
                       if (_currentUser?.uid == widget.email['senderId'] && bccRecipientsList.isNotEmpty)
                         _buildMetaDetailRow(context, "Bcc", bccRecipientsList.join(', ')),
                       _buildMetaDetailRow(context, "Date", formattedDate),
@@ -1331,7 +1288,6 @@ Future<void> _deleteEmail() async {
                         color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
                       ),
                     ),
-                    // Show translate button if language is identified, not target language, and not currently processing
                     if (_sourceLanguage != null && // Ensures identification was successful enough to set a source language
                         _sourceLanguage != _targetLanguage &&
                         !_isTranslating &&
@@ -1349,7 +1305,6 @@ Future<void> _deleteEmail() async {
                           onPressed: () {
                             if (emailBodyToDisplay.isNotEmpty && emailBodyToDisplay != '(Không có nội dung)') {
                               if (_translatedText != null && !(_translatedText!.startsWith("Lỗi") || _translatedText!.startsWith("Ngoại lệ")|| _translatedText!.startsWith("Dịch thuật yêu cầu"))) {
-                                // If already translated, toggle back to null (show original)
                                 setState(() {
                                   _translatedText = null;
                                 });
@@ -1370,7 +1325,7 @@ Future<void> _deleteEmail() async {
                           ),
                         ),
                       ),
-                    if (_isTranslating) // Show loading indicator when translating (applies to web too)
+                    if (_isTranslating) 
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0),
                         child: Row(
@@ -1381,7 +1336,7 @@ Future<void> _deleteEmail() async {
                           ],
                         ),
                       ),
-                    if (_translatedText != null && !_isTranslating) // Show translated text if available and not currently translating
+                    if (_translatedText != null && !_isTranslating) 
                       Padding(
                         padding: const EdgeInsets.only(top: 12.0),
                         child: Column(
@@ -1715,7 +1670,6 @@ Future<void> _deleteEmail() async {
       return 'attachment_${DateTime.now().millisecondsSinceEpoch}';
     }
   }  bool _shouldShowReplyAll() {
-    // Không hiển thị nếu là Sent view
     if (widget.isSentView == true) return false;
     
     final List<String> toRecipients = (widget.email['toRecipients'] as List<dynamic>?)
@@ -1728,10 +1682,8 @@ Future<void> _deleteEmail() async {
         .where((s) => s.isNotEmpty)
         .toList() ?? [];
     
-    // Tổng số người nhận (To + CC)
     final int totalRecipients = toRecipients.length + ccRecipients.length;
     
-    // Hiển thị nếu có nhiều hơn 1 người nhận
     return totalRecipients > 1;
   }  Future<void> _restoreFromTrash() async {
     if (_currentUser == null || widget.email['id'] == null) {
@@ -1810,12 +1762,12 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
     mlkit_translation.TranslateLanguage.turkish: 'tr', mlkit_translation.TranslateLanguage.ukrainian: 'uk', mlkit_translation.TranslateLanguage.urdu: 'ur',
     mlkit_translation.TranslateLanguage.vietnamese: 'vi', mlkit_translation.TranslateLanguage.welsh: 'cy',
   };
-  return bcp47Map[lang] ?? 'und'; // MODIFIED: Default to 'und' if not found
+  return bcp47Map[lang] ?? 'und'; 
 }
 
   // Helper function to get a displayable name for TranslateLanguage
-  String _getLanguageDisplayName(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: Parameter is nullable
-    if (lang == null) return 'Không xác định'; // ADDED: Handle null case
+  String _getLanguageDisplayName(mlkit_translation.TranslateLanguage? lang) { 
+    if (lang == null) return 'Không xác định'; 
 
     final bcp47 = _getBcp47Code(lang);
     switch (bcp47) {
@@ -1831,13 +1783,13 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
       // Add more mappings as needed
       default:
         String name = lang.name;
-        if (name.isNotEmpty) return name[0].toUpperCase() + name.substring(1).toLowerCase(); // MODIFIED: Capitalization
+        if (name.isNotEmpty) return name[0].toUpperCase() + name.substring(1).toLowerCase(); 
         return bcp47;
     }
   }
   
   // Helper function to get TranslateLanguage from BCP-47 code
-  mlkit_translation.TranslateLanguage? _getTranslateLanguageFromBcp47(String bcp47Code) { // MODIFIED: Return type is nullable
+  mlkit_translation.TranslateLanguage? _getTranslateLanguageFromBcp47(String bcp47Code) { 
     final String lowerCode = bcp47Code.toLowerCase();
     if (lowerCode == 'und') return null; // ADDED: Handle "und"
 
@@ -1846,7 +1798,7 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
         return langEnum;
       }
     }
-    return null; // MODIFIED: Default to null if not found
+    return null; 
   }
 
   // AI Feature Methods
@@ -1875,14 +1827,14 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
             setState(() {
                 _identifiedLanguage = "Lỗi xác định ngôn ngữ (web): ${languageCode.isEmpty ? 'empty_code' : languageCode}";
                 _languageIdentificationAttempted = true;
-                _sourceLanguage = null; // MODIFIED
+                _sourceLanguage = null; 
             });
             return;
         }
-        _sourceLanguage = _getTranslateLanguageFromBcp47(languageCode); // Can return null
+        _sourceLanguage = _getTranslateLanguageFromBcp47(languageCode); 
 
         setState(() {
-          if (_sourceLanguage == null) { // ADDED: Handle null from _getTranslateLanguageFromBcp47
+          if (_sourceLanguage == null) { 
             _identifiedLanguage = "Ngôn ngữ không xác định (web): ($languageCode)";
           } else {
             _identifiedLanguage = "Ngôn ngữ gốc: ${_getLanguageDisplayName(_sourceLanguage)} ($languageCode)";
@@ -1894,14 +1846,13 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
         setState(() {
           _identifiedLanguage = "Lỗi xác định ngôn ngữ (web API).";
           _languageIdentificationAttempted = true;
-          _sourceLanguage = null; // MODIFIED
+          _sourceLanguage = null; 
         });
         print("Error identifying language via Cloud API: $e");
       }
       return;
     }
 
-    // Non-web (ML Kit) logic
     if (!mounted) return;
     setState(() {
       _identifiedLanguage = "Đang xác định ngôn ngữ...";
@@ -1912,20 +1863,20 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
       final String languageCode = await _languageIdentifier.identifyLanguage(textToIdentify);
       if (!mounted) return;
 
-      mlkit_translation.TranslateLanguage? identifiedSourceLang; // MODIFIED: Nullable
+      mlkit_translation.TranslateLanguage? identifiedSourceLang; 
       String displayLangCode = languageCode;
 
       if (languageCode == "und") {
         displayLangCode = "Không xác định";
-        identifiedSourceLang = null; // MODIFIED
+        identifiedSourceLang = null; 
       } else {
-        identifiedSourceLang = _getTranslateLanguageFromBcp47(languageCode); // Can return null
+        identifiedSourceLang = _getTranslateLanguageFromBcp47(languageCode); 
       }
       
       if (mounted) {
         setState(() {
           _sourceLanguage = identifiedSourceLang;
-          if (_sourceLanguage == null) { // ADDED: Handle null
+          if (_sourceLanguage == null) { 
              _identifiedLanguage = "Ngôn ngữ gốc: Không xác định ($displayLangCode)";
           } else {
              _identifiedLanguage = "Ngôn ngữ gốc: ${_getLanguageDisplayName(_sourceLanguage)} ($displayLangCode)";
@@ -1938,13 +1889,13 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
       setState(() {
         _identifiedLanguage = "Lỗi xác định ngôn ngữ.";
         _languageIdentificationAttempted = true;
-        _sourceLanguage = null; // Ensure source language is null on error
+        _sourceLanguage = null; 
       });
       print("Error identifying language with ML Kit: $e");
     }
   }
 
-  Future<void> _downloadModel(mlkit_translation.OnDeviceTranslatorModelManager modelManager, mlkit_translation.TranslateLanguage language, String languageNameForSnackBar) async { // Changed
+  Future<void> _downloadModel(mlkit_translation.OnDeviceTranslatorModelManager modelManager, mlkit_translation.TranslateLanguage language, String languageNameForSnackBar) async { 
     if (kIsWeb) {
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1989,7 +1940,7 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
       if (_identifiedLanguage.contains("Lỗi") ||
           _identifiedLanguage.contains("Không có") ||
           _identifiedLanguage.contains("Đang xác định") ||
-          _sourceLanguage == null || // ADDED: Check for null _sourceLanguage
+          _sourceLanguage == null || 
           currentSourceBcp47 == 'und') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Không thể dịch do chưa xác định rõ ngôn ngữ gốc (web).")),
@@ -2045,7 +1996,7 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
       _isTranslating = true;
     });
 
-    if (_sourceLanguage == null) { // ADDED: Check if source language is null before ML Kit translation
+    if (_sourceLanguage == null) { 
         if (mounted) {
             setState(() { _isTranslating = false; });
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2058,22 +2009,17 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
     try {
       _onDeviceTranslator?.close(); 
       _onDeviceTranslator = mlkit_translation.OnDeviceTranslator(
-        sourceLanguage: _sourceLanguage!, // MODIFIED: Use null assertion after check
+        sourceLanguage: _sourceLanguage!, 
         targetLanguage: _targetLanguage,
       );
 
       final modelManager = mlkit_translation.OnDeviceTranslatorModelManager();
-      final String sourceBcp47 = _getBcp47Code(_sourceLanguage); // Will be valid BCP-47 if _sourceLanguage not null
-      final String targetBcp47 = _getBcp47Code(_targetLanguage); // ADDED: Define targetBcp47
+      final String sourceBcp47 = _getBcp47Code(_sourceLanguage); 
+      final String targetBcp47 = _getBcp47Code(_targetLanguage);
 
       bool sourceModelReady = await modelManager.isModelDownloaded(sourceBcp47);
-      // English model is often bundled or doesn't require explicit download for some operations.
-      // However, for on-device translation, it's safer to check.
-      // if (_sourceLanguage == TranslateLanguage.english) sourceModelReady = true;
-
 
       if (!sourceModelReady) {
-        // Use null assertion for _sourceLanguage as it's checked above
         await _downloadModel(modelManager, _sourceLanguage!, _getLanguageDisplayName(_sourceLanguage));
         if (!mounted) return; // Check mounted after async operation
         sourceModelReady = await modelManager.isModelDownloaded(sourceBcp47);

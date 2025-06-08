@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:gmail/screens/login.dart';
-import 'package:gmail/screens/gmail_ui.dart'; // Corrected import path
+import 'package:gmail/screens/gmail_ui.dart'; 
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -19,10 +19,8 @@ class AuthGate extends StatelessWidget {
           );
         }
         if (snapshot.hasData) {
-          // User is logged in
-          return GmailUI(); // Removed const
+          return GmailUI(); 
         } else {
-          // User is not logged in
           return const LoginPage();
         }
       },

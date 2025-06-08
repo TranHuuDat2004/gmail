@@ -40,10 +40,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
         _errorMessage = null;
       });
 
-      // For text files, try to load content
       if (_isTextFile(widget.fileExtension)) {
-        // Note: In a real app, you'd fetch the file content via HTTP
-        // For now, we'll just show the URL
         _textContent = 'File URL: ${widget.fileUrl}\n\nFile này có thể được mở trực tiếp bằng cách sao chép URL trên.';
       }
 

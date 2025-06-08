@@ -1,5 +1,3 @@
-// lib/utils/web_download_utils.dart
-// Web-specific implementation
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -11,7 +9,6 @@ Future<void> actualDownloadFileForWeb(
   Function(double) progressCallback,
 ) async {
   try {
-    // Use Dio to fetch the file with progress tracking
     final dio = Dio();
     final response = await dio.get(
       url,
@@ -23,12 +20,10 @@ Future<void> actualDownloadFileForWeb(
       },
     );
 
-    // Create blob and download link
     final bytes = response.data as List<int>;
     final blob = html.Blob([bytes]);
     final url2 = html.Url.createObjectUrlFromBlob(blob);
     
-    // Create download link and trigger download
     final anchor = html.AnchorElement()
       ..href = url2
       ..download = fileName
@@ -38,10 +33,8 @@ Future<void> actualDownloadFileForWeb(
     anchor.click();
     anchor.remove();
     
-    // Clean up
     html.Url.revokeObjectUrl(url2);
     
-    // Show success message
     if (context.mounted) {
       final theme = Theme.of(context);
       ScaffoldMessenger.of(context).showSnackBar(

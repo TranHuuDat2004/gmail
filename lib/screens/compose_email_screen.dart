@@ -1,8 +1,8 @@
 // lib/screens/compose_email_screen.dart
 import 'dart:convert';
-import 'dart:io'; // For File
-import 'dart:typed_data'; // For Uint8List (web bytes)
-import 'package:flutter/foundation.dart'; // For kIsWeb
+import 'dart:io'; 
+import 'dart:typed_data'; 
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,8 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:url_launcher/url_launcher.dart'; // Thêm import này
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // Đảm bảo bạn đã thêm package này
+import 'package:url_launcher/url_launcher.dart'; 
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; 
 
 // Conditional import for web PDF viewer
 import '../utils/web_pdf_utils_stub.dart'
@@ -19,7 +19,7 @@ import '../utils/web_pdf_utils_stub.dart'
     as web_pdf_utils;
 
 
-// Màn hình xem trước PDF cho Web
+
 class WebPdfViewerScreen extends StatefulWidget {
   final Uint8List pdfBytes;
   final String fileName;
@@ -55,7 +55,7 @@ class ComposeEmailScreen extends StatefulWidget {
   final bool isReplyAll;
   final bool isForward;
   final Map<String, dynamic>? originalEmail;
-  final Map<String, dynamic>? draftToLoad; // Added for loading draft data
+  final Map<String, dynamic>? draftToLoad; 
 
   const ComposeEmailScreen({
     super.key,
@@ -68,7 +68,7 @@ class ComposeEmailScreen extends StatefulWidget {
     this.isReplyAll = false,
     this.isForward = false,
     this.originalEmail,
-    this.draftToLoad, // Added
+    this.draftToLoad, 
   });
 
   @override
@@ -105,7 +105,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       }
     });
 
-    // SỬA: Thêm các listeners để xóa lỗi khi người dùng nhập liệu
     _toController.addListener(() {
       if (_toHasError) setState(() => _toHasError = false);
     });
@@ -122,7 +121,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   Future<void> _viewAttachmentPreview(File file) async {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    // Đối với web, file.path chính là fileName. Đối với mobile, cần trích xuất.
     final String fileName = kIsWeb ? file.path : file.path.split('/').last.split('\\\\').last;
     final String fileExtension = fileName.split('.').last.toLowerCase();
 
@@ -153,7 +151,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                 backgroundColor: isDarkMode ? const Color(0xFF202124) : Colors.white,
                 iconTheme: IconThemeData(color: isDarkMode ? Colors.grey[400] : Colors.black54),
               ),
-              body: SfPdfViewer.file(file), // 'file' ở đây là File object với full path cho mobile
+              body: SfPdfViewer.file(file), 
             ),
           ),
         );
@@ -166,7 +164,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           );
         }
       } else { // Mobile Office
-        // 'file' ở đây là File object với full path cho mobile
         final uri = Uri.file(file.path);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -179,8 +176,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         }
       }
     } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(fileExtension)) {
-        // Xem trước ảnh (đã hoạt động theo mô tả của bạn, nếu cần code cụ thể thì cung cấp thêm)
-        // Ví dụ:
         Navigator.push(context, MaterialPageRoute(builder: (_) {
           return Scaffold(
             appBar: AppBar(title: Text(fileName)),
@@ -218,11 +213,9 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           final settingsData = userSettings.data() as Map<String, dynamic>;
           _defaultFontFamily = settingsData['fontFamily'] as String? ?? 'Roboto';
           final loadedFontSize = (settingsData['fontSize'] as num?)?.toDouble() ?? 14.0;
-          // Ensure the loaded font size is in our available list
           if (_availableFontSizes.contains(loadedFontSize)) {
             _defaultEditorFontSize = loadedFontSize;
           } else {
-            // Find the closest available font size
             _defaultEditorFontSize = _availableFontSizes.reduce((a, b) => 
               (a - loadedFontSize).abs() < (b - loadedFontSize).abs() ? a : b);
           }
@@ -233,9 +226,8 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     }
 
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email;
-    _fromController.text = currentUserEmail ?? "anonymous@example.com";    // Priority: draftToLoad > replyOrForwardEmail > new email
+    _fromController.text = currentUserEmail ?? "anonymous@example.com";
     if (widget.draftToLoad != null) {
-      // Load draft data
       _draftId = widget.draftToLoad!['id'];
       _toController.text = (widget.draftToLoad!['toRecipients'] as List<dynamic>?)?.join(', ') ?? '';
       _ccController.text = (widget.draftToLoad!['ccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
@@ -293,7 +285,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         _attachments = attachmentPaths.map((path) => File(path)).toList();
       }
     } else {
-      // New email, don't add any default formatting - let Quill handle it naturally
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.replyOrForwardEmail == null && widget.draftToLoad == null) {
           FocusScope.of(context).requestFocus(_toFocusNode);
@@ -308,14 +299,12 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       _isLoadingAppSettings = false;
     });
   }  void _onTextChanged() {
-    // Track changes for potential future use
   }
   void _populateFieldsForReplyForward() {
     final email = widget.replyOrForwardEmail!;
     String originalSender = email['senderEmail'] ?? email['from'] ?? '';
     String originalSubject = email['subject'] ?? '';
     
-    // Try to load rich text formatting from bodyDeltaJson first
     quill.Document? quotedDocument;
     if (email['bodyDeltaJson'] != null) {
       try {
@@ -326,7 +315,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       }
     }
     
-    // Fallback to plain text if rich text failed
     if (quotedDocument == null) {
       String originalBody = email['bodyPlainText'] ?? email['body'] ?? email['bodyContent'] ?? '';
       quotedDocument = quill.Document()..insert(0, originalBody);
@@ -338,7 +326,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           ? originalSubject
           : "Re: $originalSubject";
       
-      // Create new document with quoted content
       _quillController.document = quill.Document()..insert(0, "\n\n");
       _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     } else if (widget.composeMode == 'replyAll') {
@@ -349,7 +336,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           ? originalSubject
           : "Re: $originalSubject";
       
-      // Create new document with quoted content
       _quillController.document = quill.Document()..insert(0, "\n\n");
       _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     } else if (widget.composeMode == 'forward') {
@@ -357,7 +343,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           ? originalSubject
           : "Fwd: $originalSubject";
       
-      // Create new document with quoted content
       _quillController.document = quill.Document()..insert(0, "\n\n");
       _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     }
@@ -368,9 +353,8 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (!mounted) return;
     final theme = Theme.of(context);
 
-    // Gmail-like restrictions
-    const int maxFiles = 25; // Gmail limit
-    const int maxFileSizeMB = 25; // Gmail limit per file
+    const int maxFiles = 25; 
+    const int maxFileSizeMB = 25; 
     const int maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
 
     if (_attachments.length >= maxFiles) {      ScaffoldMessenger.of(context).showSnackBar(
@@ -409,9 +393,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       if (result != null && result.files.isNotEmpty) {
         List<String> errors = [];
         int filesAdded = 0;
-
         for (var file in result.files) {
-          // Check if we've reached the limit
           if (_attachments.length + filesAdded >= maxFiles) {
             errors.add('Đã đạt giới hạn $maxFiles tệp');
             break;
@@ -492,11 +474,11 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (!mounted) return;
     final theme = Theme.of(context); // Get theme for SnackBar & Dialog
 
-    setState(() { _isSending = true; }); // Báo hiệu đang xử lý
+    setState(() { _isSending = true; }); 
     final bool areRecipientsValid = await _validateRecipients();
     if (!areRecipientsValid) {
-      setState(() { _isSending = false; }); // Dừng xử lý
-      return; // Dừng hàm nếu có email không hợp lệ
+      setState(() { _isSending = false; }); 
+      return; 
     }
 
 
@@ -555,7 +537,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
     DocumentReference docRef = FirebaseFirestore.instance
         .collection('emails')
-        .doc(); // Generate ID upfront
+        .doc(); 
 
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -563,7 +545,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           FirebaseAuth.instance.currentUser?.email ?? _fromController.text;
 
       if (userId == null) {
-        // MODIFIED
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -584,7 +565,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               .split('/')
               .last
               .split('\\')
-              .last; // Handle both / and \ separators
+              .last; 
           try {
             Reference ref = FirebaseStorage.instance
                 .ref()
@@ -630,26 +611,20 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               .toList()
           : [];
 
-      // final userId = FirebaseAuth.instance.currentUser?.uid; // Already defined and checked for null
-      // final userEmail = FirebaseAuth.instance.currentUser?.email ?? _fromController.text; // Already defined
       final String currentSenderId =
-          userId; // Removed the unnecessary '!' operator
+          userId; 
 
       // Initialize email properties
       Map<String, List<String>> emailLabels = {};
       Map<String, bool> emailIsReadBy = {};
       List<String> involvedUserIds = [];
 
-      // 1. Handle Sender
-      // The sender's ID should already be in involvedUserIds if they are a recipient.
-      // If not, add them now. The primary label for the sender is 'Sent'.
       if (!involvedUserIds.contains(currentSenderId)) {
         involvedUserIds.add(currentSenderId);
       }
       emailLabels[currentSenderId] = ['Sent'];
       emailIsReadBy[currentSenderId] =
-          true; // Sent mail is initially marked as read for the sender.      // 2. Handle Recipients (TO, CC, BCC separately to ensure all get proper labels)
-
+          true; 
       // Process TO recipients
       for (String recipientEmail in toRecipients) {
         if (recipientEmail.isEmpty) continue;
@@ -668,7 +643,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               involvedUserIds.add(recipientId);
             }
 
-            // Add 'Inbox' label for TO recipients
             List<String> currentLabels = emailLabels[recipientId] ?? [];
             if (!currentLabels.contains('Inbox')) {
               currentLabels.add('Inbox');
@@ -774,12 +748,12 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         'ccRecipients': ccRecipients,
         'bccRecipients': bccRecipients,
         'subject': finalSubject,
-        'body': finalBodyPlainText, // Ensure this key is 'body' if that's what email_list_item expects for bodyPlainText
-        'bodyPlainText': finalBodyPlainText, // Keeping this for explicit storage if needed elsewhere
+        'body': finalBodyPlainText, 
+        'bodyPlainText': finalBodyPlainText, 
         'bodyDeltaJson': bodyDeltaJson,
         'timestamp': FieldValue.serverTimestamp(),
         'attachments': attachmentUrls,
-        'hasAttachment': attachmentUrls.isNotEmpty, // Added this line
+        'hasAttachment': attachmentUrls.isNotEmpty, 
         'emailLabels': emailLabels,
         'emailIsReadBy': emailIsReadBy,
         'involvedUserIds': involvedUserIds.toSet().toList(),
@@ -787,7 +761,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
       await docRef.set(emailData);
 
-      // Xóa nháp nếu đang chỉnh sửa
       if (_draftId != null) {
         await FirebaseFirestore.instance
             .collection('users')
@@ -801,7 +774,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       print('Email saved to Firestore with ID: ${docRef.id}');
 
       if (mounted) {
-        // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Email sent successfully!'),
@@ -814,13 +786,11 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         Navigator.pop(context);
       }
 
-      // After successful email save, check for auto reply
       await _checkAndSendAutoReply(toRecipients, ccRecipients, bccRecipients, 
           _subjectController.text.trim(), userEmail);
 
     } catch (e) {
       if (mounted) {
-        // MODIFIED
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to send email: $e'),
@@ -831,7 +801,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       }
     } finally {
       if (mounted) {
-        // MODIFIED
         setState(() {
           _isSending = false;
         });
@@ -840,7 +809,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   }
 
   Future<bool> _validateRecipients() async {
-    // Reset trạng thái lỗi trước mỗi lần kiểm tra
     setState(() {
       _toHasError = false;
       _ccHasError = false;
@@ -858,13 +826,11 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     final allUniqueEmails = {...toEmails, ...ccEmails, ...bccEmails}.toList();
 
     if (allUniqueEmails.isEmpty) {
-      // Logic kiểm tra trường "To" rỗng đã có ở hàm send, nên ở đây ta coi là hợp lệ
       return true;
     }
     
     Set<String> validEmailsInDB = {};
     
-    // Firestore "whereIn" chỉ hỗ trợ tối đa 30 item mỗi lần, nên ta phải chia nhỏ nếu cần
     for (var i = 0; i < allUniqueEmails.length; i += 30) {
       var chunk = allUniqueEmails.sublist(i, i + 30 > allUniqueEmails.length ? allUniqueEmails.length : i + 30);
       try {
@@ -881,7 +847,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Lỗi khi kiểm tra email: $e")),
         );
-        return false; // Dừng lại nếu có lỗi truy vấn DB
+        return false; 
       }
     }
     
@@ -899,21 +865,19 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
-      return false; // Có email không hợp lệ
+      return false; 
     }
 
-    return true; // Tất cả email đều hợp lệ
+    return true; 
   }
 
 
   Future<void> _checkAndSendAutoReply(List<String> toRecipients, List<String> ccRecipients, 
       List<String> bccRecipients, String originalSubject, String senderEmail) async {
     try {
-      // Get all recipient emails
       List<String> allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
       
       for (String recipientEmail in allRecipients) {
-        // Check if recipient has auto reply enabled
         final userQuery = await FirebaseFirestore.instance
             .collection('user_settings')
             .where('email', isEqualTo: recipientEmail)
@@ -927,7 +891,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           final String autoReplyMessage = autoReplySettings['autoReplyMessage'] ?? 
               'I am currently unavailable and will get back to you soon.';
           
-          // Get recipient user details
           final recipientUserQuery = await FirebaseFirestore.instance
               .collection('users')
               .where('email', isEqualTo: recipientEmail)
@@ -939,7 +902,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             final recipientUserId = recipientUser.id;
             final recipientDisplayName = recipientUser.data()['displayName'] ?? recipientEmail;
             
-            // Send auto reply email
             await _sendAutoReplyEmail(
               fromUserId: recipientUserId,
               fromEmail: recipientEmail,
@@ -1096,7 +1058,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       };
 
       if (_draftId != null) {
-        // Cập nhật nháp hiện có
         await FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
@@ -1104,7 +1065,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
             .doc(_draftId)
             .set(draftData, SetOptions(merge: true));
       } else {
-        // Tạo nháp mới
         final docRef = await FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
@@ -1147,7 +1107,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       // Auto-save as draft when closing with content
       _saveDraft();
     } else {
-      // Just close if no content
       Navigator.pop(context);
     }
   }
@@ -1180,7 +1139,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       );
     }
 
-    // Đảm bảo các biến này nằm trong build
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
     final dividerColor = isDarkMode ? Colors.grey[700]! : const Color(0xFFE0E0E0);
@@ -1311,7 +1269,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                   label: "Đến",
                   controller: _toController,
                   focusNode: _toFocusNode,
-                  isInvalid: _toHasError, // Sửa: Thêm dòng này
+                  isInvalid: _toHasError, 
                   onToggleCcBcc: () {
                     setState(() {
                       _showCcBcc = !_showCcBcc;
@@ -1328,7 +1286,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                       context: context,
                       label: "Cc",
                       controller: _ccController,
-                      isInvalid: _ccHasError), // Sửa: Thêm dòng này
+                      isInvalid: _ccHasError), 
                   Divider(
                       height: 0,
                       indent: 16,
@@ -1338,7 +1296,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                       context: context,
                       label: "Bcc",
                       controller: _bccController,
-                      isInvalid: _bccHasError), // Sửa: Thêm dòng này
+                      isInvalid: _bccHasError), 
                 ],
                 Divider(
                     height: 0, indent: 16, endIndent: 16, color: dividerColor),
@@ -1348,19 +1306,16 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                 Divider(
                     height: 0, indent: 16, endIndent: 16, color: dividerColor),
 
-                // Sửa 1: Thay thế Row "Chủ đề" bằng một TextField duy nhất
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: TextField(
                     controller: _subjectController,
                     cursorColor: cursorColor,
                     style: TextStyle(color: textFieldTextColor, fontSize: 16),
-                    maxLines: 1, // Đảm bảo chủ đề chỉ nằm trên 1 dòng
+                    maxLines: 1, 
                     decoration: InputDecoration(
-                      // Sử dụng labelText để tạo placeholder động
                       labelText: 'Chủ đề', 
                       labelStyle: TextStyle(fontSize: 16, color: cursorColor),
-                      // Xóa các đường viền
                       border: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -1393,12 +1348,9 @@ Container(
   ),
   child: DropdownButtonHideUnderline(
     child: DropdownButton<String>(
-      // Lấy font hiện tại từ selection hoặc typing attributes
       value: _getCurrentFontFamily(),
       style: TextStyle(color: textFieldTextColor, fontSize: 12),
       dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,
-      // Chỉ hiển thị các font bạn đã khai báo trong pubspec.yaml
-      // Đảm bảo tên 'TimesNewRoman' khớp với 'family' trong pubspec.yaml
       items: ['Arial', 'Roboto', 'TimesNewRoman'].map((font) {
         return DropdownMenuItem(
           value: font,
@@ -1407,7 +1359,6 @@ Container(
       }).toList(),
       onChanged: (font) {
         if (font != null) {
-          // Áp dụng font cho selection hoặc typing attributes
           _applyFontAndSizeToSelection(fontFamily: font);
         }
       },
@@ -1424,41 +1375,39 @@ Container(
   ),
   child: DropdownButtonHideUnderline(
     child: DropdownButton<double>(
-      // Lấy font size hiện tại từ selection hoặc typing attributes
       value: _getCurrentFontSize(),
       style: TextStyle(color: textFieldTextColor, fontSize: 12),
-      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,      items: _availableFontSizes.map((size) { // Use _availableFontSizes
+      dropdownColor: isDarkMode ? Colors.grey[800] : Colors.white,      items: _availableFontSizes.map((size) { 
         return DropdownMenuItem<double>(
           value: size,
-          child: Text(size.toStringAsFixed(0)), // Keep default font for size display
+          child: Text(size.toStringAsFixed(0)), 
         );
       }).toList(),
       onChanged: (size) {
         if (size != null) {
-          // Áp dụng font size cho selection hoặc typing attributes
           _applyFontAndSizeToSelection(fontSize: size);
         }
       },
     ),
   ),
-),                              // Basic formatting buttons
+),                            
                               _buildToolbarButton(Icons.format_bold, () {
                                 _formatText('bold');
-                                setState(() {}); // Update button states immediately
+                                setState(() {}); 
                                 Future.delayed(const Duration(milliseconds: 50), () {
                                   if (mounted) _quillFocusNode.requestFocus();
                                 });
                               }, isDarkMode, isToggled: _isFormatActive('bold')),
                               _buildToolbarButton(Icons.format_italic, () {
                                 _formatText('italic');
-                                setState(() {}); // Update button states immediately
+                                setState(() {}); 
                                 Future.delayed(const Duration(milliseconds: 50), () {
                                   if (mounted) _quillFocusNode.requestFocus();
                                 });
                               }, isDarkMode, isToggled: _isFormatActive('italic')),
                               _buildToolbarButton(Icons.format_underlined, () {
                                 _formatText('underline');
-                                setState(() {}); // Update button states immediately
+                                setState(() {}); 
                                 Future.delayed(const Duration(milliseconds: 50), () {
                                   if (mounted) _quillFocusNode.requestFocus();
                                 });
@@ -1557,7 +1506,7 @@ Container(
                       runSpacing: 8.0,
                       children: _attachments.asMap().entries.map((entry) {
                         final int index = entry.key;
-                        final File fileEntry = entry.value; // Đổi tên biến để tránh nhầm lẫn với 'file' trong scope khác
+                        final File fileEntry = entry.value; 
                         String currentFileName = kIsWeb
                             ? fileEntry.path
                             : fileEntry.path.split('/').last.split('\\\\').last;
@@ -1575,7 +1524,6 @@ Container(
                           ),
                           onDeleted: () {
                             setState(() {
-                              // fileKey cho _webAttachmentData phải là fileName
                               String fileKeyForWebData = kIsWeb ? fileEntry.path : fileEntry.path.split('/').last.split('\\\\').last;
                               _webAttachmentData.remove(fileKeyForWebData);
                               _attachments.removeAt(index);
@@ -1588,11 +1536,9 @@ Container(
                         
                         return GestureDetector(
                           onTap: () {
-                            // fileEntry ở đây là File object đã được lưu trong _attachments
-                            // Đối với web, path của nó là fileName. Đối với mobile, path là full path.
                             _viewAttachmentPreview(fileEntry);
                           },
-                          child: Container( // Container đã có sẵn trong code của bạn
+                          child: Container( 
                             constraints: BoxConstraints(
                                 maxWidth:
                                     MediaQuery.of(context).size.width * 0.4),
@@ -1617,7 +1563,7 @@ Container(
       required TextEditingController controller,
       FocusNode? focusNode,
       VoidCallback? onToggleCcBcc,
-      bool isInvalid = false}) { // SỬA: Thêm tham số isInvalid
+      bool isInvalid = false}) { 
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
     final textFieldTextColor = isDarkMode ? Colors.grey[200] : Colors.black87;
@@ -1634,7 +1580,6 @@ Container(
             child: Text(label,
                 style: TextStyle(
                   fontSize: 16,
-                  // SỬA: Dùng isInvalid để đổi màu thành đỏ nếu có lỗi
                   color: isInvalid ? Colors.red.shade400 : cursorColor,
                 )),
           ),
@@ -1718,32 +1663,24 @@ Container(
         ],
       ),
     );
-  }  // Helper methods for custom toolbar
-  // Helper: lấy font hiện tại tại vị trí con trỏ hoặc selection (giống Gmail)
-// Helper: lấy font hiện tại tại vị trí con trỏ hoặc selection
+  } 
+  
 String _getCurrentFontFamily() {
-  // _defaultFontFamily là font được load từ user_settings, dùng làm fallback
-  // hoặc font mặc định của editor.
   final attrs = _quillController.getSelectionStyle().attributes;
   return attrs[quill.Attribute.font.key]?.value ?? _defaultFontFamily;
 }
 
-// Helper: lấy font size hiện tại tại vị trí con trỏ hoặc selection
 double _getCurrentFontSize() {
   final attrs = _quillController.getSelectionStyle().attributes;
   final sizeValue = attrs[quill.Attribute.size.key]?.value;
 
   if (sizeValue != null) {
-    // Quill có thể lưu size dạng string "12" hoặc "16px"
-    // Chuyển đổi an toàn về double
     final String sizeString = sizeValue.toString().replaceAll('px', '');
     final double? parsedSize = double.tryParse(sizeString);
     if (parsedSize != null && _availableFontSizes.contains(parsedSize)) {
       return parsedSize;
     }
   }
-  // Fallback to _defaultEditorFontSize, and ensure it's valid
-  // If _defaultEditorFontSize is not in the list, find the closest one
   if (!_availableFontSizes.contains(_defaultEditorFontSize)) {
     _defaultEditorFontSize = _availableFontSizes.reduce((a, b) => 
       (a - _defaultEditorFontSize).abs() < (b - _defaultEditorFontSize).abs() ? a : b);
@@ -1751,8 +1688,6 @@ double _getCurrentFontSize() {
   return _defaultEditorFontSize;
 }
 
-  // Sửa lại _isFormatActive: kiểm tra thực sự selection có định dạng không (giống Gmail)
-  // Sửa lại _isFormatActive: kiểm tra thực sự selection có định dạng không (giống Gmail)
 bool _isFormatActive(String format) {
   final attrs = _quillController.getSelectionStyle().attributes;
   switch (format) {
@@ -1762,17 +1697,10 @@ bool _isFormatActive(String format) {
       return attrs[quill.Attribute.italic.key]?.value == true;
     case 'underline':
       return attrs[quill.Attribute.underline.key]?.value == true;
-    // Bạn có thể thêm các case khác nếu cần, ví dụ:
-    // case 'strike':
-    //   return attrs[quill.Attribute.strikeThrough.key]?.value == true;
-    // case 'code-block':
-    //   return attrs[quill.Attribute.codeBlock.key]?.value == true;
   }
   return false;
 }
 
-  // Sửa lại _applyFontToSelection: chỉ áp dụng cho selection, nếu không thì chỉ set cho future typing
-  // Hàm mới để áp dụng font và/hoặc size
 void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
   final selection = _quillController.selection;
 
@@ -1803,13 +1731,12 @@ void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
 }
 
   void _formatText(String format) {
-  // Đảm bảo editor có focus
   if (!_quillFocusNode.hasFocus) {
     FocusScope.of(context).requestFocus(_quillFocusNode);
   }
 
-  quill.Attribute? attributeToToggle; // Thuộc tính cần bật/tắt (Bold, Italic, Underline)
-  bool isCurrentlyActive = false; // Trạng thái hiện tại của thuộc tính đó (active hay không)
+  quill.Attribute? attributeToToggle; 
+  bool isCurrentlyActive = false; 
 
   switch (format) {
     case 'bold':
@@ -1834,8 +1761,6 @@ void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
       _quillController.formatSelection(quill.Attribute.rightAlignment);
       break;
     case 'list-bullet':
-      // Toggle list: nếu đang là list thì bỏ, không thì áp dụng
-      // Flutter Quill xử lý việc này khi bạn truyền Attribute.ul
       _quillController.formatSelection(quill.Attribute.ul);
       break;
     case 'list-numbered':
@@ -1843,36 +1768,25 @@ void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
       break;
     case 'clear':
       final selection = _quillController.selection;
-      if (selection.isValid && !selection.isCollapsed) { // Nếu có bôi đen
+      if (selection.isValid && !selection.isCollapsed) { 
         final int len = selection.end - selection.start;
-        // Xóa các định dạng cơ bản cho vùng chọn
         _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.bold, null));
         _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.italic, null));
         _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.underline, null));
-        // Tùy chọn: Xóa cả font và size nếu muốn "Clear All Formatting"
-        // _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.font, null));
-        // _quillController.formatText(selection.start, len, quill.Attribute.clone(quill.Attribute.size, null));
-      } else { // Nếu chỉ là con trỏ, xóa định dạng cho typing attributes
+      } else { 
         _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.bold, null));
         _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.italic, null));
         _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.underline, null));
-        // _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.font, null));
-        // _quillController.formatSelection(quill.Attribute.clone(quill.Attribute.size, null));
       }
       break;
     default:
-      return; // Không làm gì nếu format không xác định
+      return; 
   }
 
-  // Nếu là thuộc tính cần toggle (Bold, Italic, Underline)
   if (attributeToToggle != null) {
-    // Nếu đang active, truyền giá trị null để loại bỏ thuộc tính đó (toggle off)
-    // Nếu không active, truyền chính thuộc tính đó để áp dụng (toggle on)
     _quillController.formatSelection(isCurrentlyActive ? quill.Attribute.clone(attributeToToggle, null) : attributeToToggle);
   }
 
-  // setState để cập nhật trạng thái nút ngay lập tức.
-  // Listener của controller cũng sẽ làm điều này, nhưng có thể có độ trễ nhỏ.
   if (mounted) {
     setState(() {});
   }

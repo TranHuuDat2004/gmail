@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 final ThemeData lightTheme = ThemeData(
   brightness: Brightness.light,
-  primaryColor: Colors.blue, // Gmail's blue for primary actions
+  primaryColor: Colors.blue, 
   scaffoldBackgroundColor: Colors.white,
   cardColor: Colors.white,
   dividerColor: Colors.grey[300],
@@ -53,7 +53,7 @@ final ThemeData lightTheme = ThemeData(
     unselectedItemColor: Colors.grey[600],
   ),
   floatingActionButtonTheme: FloatingActionButtonThemeData(
-    backgroundColor: Colors.white, // Gmail's compose button color
+    backgroundColor: Colors.white, //  compose button color
     foregroundColor: const Color(0xFF1967D2), // Blue icon/text
   ),
   inputDecorationTheme: InputDecorationTheme(
@@ -84,7 +84,7 @@ final ThemeData lightTheme = ThemeData(
 
 final ThemeData darkTheme = ThemeData(
   brightness: Brightness.dark,
-  primaryColor: const Color(0xFF8AB4F8), // Gmail's accessible blue for dark theme
+  primaryColor: const Color(0xFF8AB4F8), // accessible blue for dark theme
   scaffoldBackgroundColor: const Color(0xFF1F1F1F), // Main dark background
   cardColor: const Color(0xFF2A2A2A), // Slightly lighter for cards/surfaces
   dividerColor: Colors.grey[800],
@@ -133,7 +133,6 @@ final ThemeData darkTheme = ThemeData(
     backgroundColor: const Color(0xFFE8EAED), // Light grey background for FAB in dark mode (matching image)
     foregroundColor: const Color(0xFF8AB4F8), // Light blue icon/text on FAB (matching image)
     elevation: 2.0, // Default elevation
-    // shape: StadiumBorder(), // Default shape for extended FAB
   ),
   inputDecorationTheme: InputDecorationTheme(
     focusedBorder: OutlineInputBorder(

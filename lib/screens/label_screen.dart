@@ -1,4 +1,3 @@
-// lib/screens/label_management_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -224,14 +223,12 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
         }
 
         WriteBatch batch = _firestore.batch();
-        // Cập nhật nhãn chính
         batch.update(_userLabelsCollection.doc(labelId), {'name': newFullName});
 
-        // Nếu tên nhãn cha thay đổi (parentPrefix rỗng và tên đầy đủ thay đổi), cập nhật các nhãn con
         if (parentPrefix.isEmpty && currentFullName != newFullName) {
             QuerySnapshot childrenSnapshot = await _userLabelsCollection
                 .where('name', isGreaterThanOrEqualTo: "$currentFullName/")
-                 .where('name', isLessThan: "$currentFullName\uF8FF") // \uF8FF là ký tự Unicode rất cao
+                 .where('name', isLessThan: "$currentFullName\uF8FF") 
                 .get();
             for (var childDoc in childrenSnapshot.docs) {
                 String oldChildName = childDoc['name'] as String;
@@ -297,13 +294,11 @@ class _LabelManagementScreenState extends State<LabelManagementScreen> {
         WriteBatch batch = _firestore.batch();
         List<String> labelsAffectedByDeletion = [labelName];
 
-        // Xóa nhãn chính
         batch.delete(_userLabelsCollection.doc(labelId));
 
-        // Query và xóa tất cả các nhãn con
         QuerySnapshot childrenSnapshot = await _userLabelsCollection
             .where('name', isGreaterThanOrEqualTo: "$labelName/")
-            .where('name', isLessThan: "$labelName\uF8FF") // \uF8FF là ký tự Unicode rất cao
+            .where('name', isLessThan: "$labelName\uF8FF") 
             .get();
 
         for (var childDoc in childrenSnapshot.docs) {

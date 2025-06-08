@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Added for logout
+import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:gmail/screens/settings_screen.dart';
-import 'package:gmail/screens/label_screen.dart'; // Corrected import path
+import 'package:gmail/screens/label_screen.dart'; 
 import 'package:gmail/screens/display_settings_screen.dart'; 
 import 'package:gmail/screens/auto_answer_mode_screen.dart';
-import 'package:gmail/screens/login.dart'; // Thêm import cho LoginPage
-import 'package:cloud_firestore/cloud_firestore.dart'; // Thêm import
-import 'dart:async'; // Thêm import cho StreamSubscription
+import 'package:gmail/screens/login.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'dart:async'; 
 
 
 class CustomDrawer extends StatefulWidget {
@@ -54,12 +54,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
     super.dispose();
   }
 
-  // Public method to refresh email counts from parent widget
   void refreshEmailCounts() {
     _loadAllEmailsForCounting();
   }
 
-  // Load user-created labels from Firestore
   Future<void> _loadUserLabels() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
@@ -77,14 +75,12 @@ class _CustomDrawerState extends State<CustomDrawer> {
             .map((doc) => doc['name'] as String)
             .toList();
         
-        // Update parent widget with labels
         widget.onUserLabelsUpdated(userCreatedLabels);
       }
     } catch (e) {
       print("Error loading user labels: $e");
     }
   }
-  // Load all emails and drafts for counting purposes with real-time updates
   Future<void> _loadAllEmailsForCounting() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
@@ -95,11 +91,9 @@ class _CustomDrawerState extends State<CustomDrawer> {
     }
 
     try {
-      // Cancel existing subscriptions
       await _emailStreamSubscription?.cancel();
       await _draftStreamSubscription?.cancel();
 
-      // Load all emails with real-time updates
       final emailsQuery = FirebaseFirestore.instance
           .collection('emails')
           .where('involvedUserIds', arrayContains: currentUser.uid);
@@ -170,14 +164,11 @@ class _CustomDrawerState extends State<CustomDrawer> {
   Future<void> _handleLogout(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
-      // Sau khi đăng xuất thành công, điều hướng về LoginPage
-      // và xóa tất cả các màn hình trước đó khỏi stack.
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()),
-        (Route<dynamic> route) => false, // Xóa tất cả các route trước đó
+        (Route<dynamic> route) => false, 
       );
     } catch (e) {
-      // Xử lý lỗi nếu có (ví dụ: hiển thị SnackBar)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lỗi đăng xuất: ${e.toString()}')),
       );
@@ -212,7 +203,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
             Icons.inbox,
             "Inbox",
             count: _isLoadingCounts ? 0 : (currentUserId != null ? _allEmails.where((e) {
-              // Filter out trashed and permanently deleted emails
               final isTrashedBy = List<String>.from(e['isTrashedBy'] ?? []);
               final permanentlyDeletedBy = List<String>.from(e['permanentlyDeletedBy'] ?? []);
               if (isTrashedBy.contains(currentUserId) || permanentlyDeletedBy.contains(currentUserId)) {
@@ -224,19 +214,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
               return userLabels?.contains('Inbox') ?? false;
             }).length : 0),
             unreadCount: _isLoadingCounts ? 0 : (currentUserId != null ? _allEmails.where((e) {
-              // Filter out trashed and permanently deleted emails first
               final isTrashedBy = List<String>.from(e['isTrashedBy'] ?? []);
               final permanentlyDeletedBy = List<String>.from(e['permanentlyDeletedBy'] ?? []);
               if (isTrashedBy.contains(currentUserId) || permanentlyDeletedBy.contains(currentUserId)) {
                 return false;
               }
               
-              // Check if email is in Inbox
               final labelsMap = e['emailLabels'] as Map<String, dynamic>?;
               final userLabels = labelsMap?[currentUserId] as List<dynamic>?;
               final isInInbox = userLabels?.contains('Inbox') ?? false;
               
-              // Check if email is unread
               final emailIsReadBy = e['emailIsReadBy'] as Map<String, dynamic>?;
               final isUnread = !(emailIsReadBy?[currentUserId] ?? false);
               
@@ -341,19 +328,17 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   }
                 }
                 
-                // Refresh user labels and email counts after returning from label management
                 _loadUserLabels();
                 _loadAllEmailsForCounting();
               },
-            ),contentPadding: const EdgeInsets.only(left: 16.0, right: 12.0), // Adjust padding to align title and button
-            dense: true, // Makes the ListTile more compact
-          ),          // Show only first 3 labels
+            ),contentPadding: const EdgeInsets.only(left: 16.0, right: 12.0), 
+            dense: true, 
+          ),          
           ...widget.userLabels.take(3).map((label) => _buildDrawerItem(
                 context,
                 Icons.label_outline,
                 label,
                 count: _isLoadingCounts ? 0 : (currentUserId != null ? _allEmails.where((e) {
-                  // Filter out trashed and permanently deleted emails
                   final isTrashedBy = List<String>.from(e['isTrashedBy'] ?? []);
                   final permanentlyDeletedBy = List<String>.from(e['permanentlyDeletedBy'] ?? []);
                   if (isTrashedBy.contains(currentUserId) || permanentlyDeletedBy.contains(currentUserId)) {
@@ -375,23 +360,20 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 style: TextStyle(
                   color: defaultTextColor,
                 ),
-              ),              onTap: () async { // <-- Sửa 1: Thêm async
-                Navigator.pop(context); // Đóng drawer
-                // Sửa 2: Dùng await để chờ kết quả
+              ),              onTap: () async { 
+                Navigator.pop(context); 
                 final result = await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const LabelManagementScreen()),
                 );
 
-                // Sửa 3: Xử lý kết quả trả về
                 if (result is Map<String, dynamic> && result['action'] == 'selectLabel') {
                   final String? label = result['label'];
                   if (label != null) {
-                    widget.onLabelSelected(label); // Gọi callback để cập nhật GmailUI
+                    widget.onLabelSelected(label); 
                   }
                 }
                 
-                // Refresh user labels and email counts after returning from label management
                 _loadUserLabels();
                 _loadAllEmailsForCounting();
               },
@@ -401,7 +383,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
             leading: Icon(Icons.settings_outlined, color: defaultIconColor),
             title: Text('Cài đặt', style: TextStyle(color: defaultTextColor)),
             onTap: () {
-              Navigator.pop(context); // Đóng drawer trước
+              Navigator.pop(context); 
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
@@ -412,16 +394,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
             leading: Icon(Icons.help_outline, color: defaultIconColor),
             title: Text('Trợ giúp & phản hồi', style: TextStyle(color: defaultTextColor)),
             onTap: () {
-              Navigator.pop(context); // Đóng drawer
+              Navigator.pop(context); 
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mở Trợ giúp & Phản hồi")));
             },
           ),
-          Divider(color: dividerColor), // Thêm Divider trước nút Đăng xuất nếu muốn tách biệt rõ hơn
+          Divider(color: dividerColor), 
           ListTile( 
             leading: Icon(Icons.logout, color: defaultIconColor),
             title: Text('Đăng xuất', style: TextStyle(color: defaultTextColor)),
             onTap: () {
-              _handleLogout(context); // Gọi hàm xử lý đăng xuất
+              _handleLogout(context); 
             },
           ),
         ],
@@ -438,10 +420,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final Color unreadCountColor = Colors.red;    final itemColor = isSelected ? selectedColor : unselectedTextColor;
     final iconColor = isSelected ? selectedColor : unselectedIconColor;
 
-    // Build trailing widget based on counts
     Widget? trailing;
     if (unreadCount > 0 && title == "Inbox") {
-      // For Inbox with unread emails, show red unread count
       trailing = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -473,16 +453,14 @@ class _CustomDrawerState extends State<CustomDrawer> {
       ),
       trailing: trailing,
       tileColor: isSelected ? selectedTileColor : Colors.transparent,
-      shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSelected ? 25 : 8)) : null, // More rounded for selected
-      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: isSelected ? 2.0 : 0.0), // Slightly more vertical padding for selected
+      shape: isSelected ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSelected ? 25 : 8)) : null,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.0, vertical: isSelected ? 2.0 : 0.0), 
       onTap: () {
         if (onTap != null) {
           onTap();
         } else {
-          // Default behavior if specific onTap is not provided (though it should be for these items)
           widget.onLabelSelected(title);
         }
-        // Consider closing the drawer here if that's the desired UX
         Navigator.pop(context); 
       },
     );

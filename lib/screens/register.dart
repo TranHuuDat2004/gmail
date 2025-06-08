@@ -24,35 +24,29 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
 
-  String? _verificationId; // To store verification ID from Firebase
-  bool _showOtpInput = false; // To control visibility of OTP input field
-
-  // Store user details temporarily after validation to pass to _finalizeRegistration
+  String? _verificationId; 
+  bool _showOtpInput = false; 
   String _tempName = "";
   String _tempPhone = "";
   String _tempEmail = "";
   String _tempPassword = "";
 
-  // Hàm mới để quay lại chỉnh sửa thông tin
   void _editInformation() {
     if (!mounted) return;
     setState(() {
       _showOtpInput = false;
       _verificationId = null;
       _otpController.clear();
-      _error = null; // Xóa thông báo lỗi cũ
-      _isLoading = false; // Đảm bảo không ở trạng thái loading
+      _error = null; 
+      _isLoading = false; 
     });
   }
 
-  // Helper function to format phone number for Firebase
   String _formatPhoneNumberForFirebase(String localPhoneNumber) {
     String cleaned = localPhoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
-    // Giả sử mã quốc gia Việt Nam là +84
-    // Bạn có thể cần điều chỉnh nếu ứng dụng hỗ trợ nhiều quốc gia
     return '+84$cleaned';
   }
 
@@ -73,7 +67,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   void dispose() {
     _controller.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose(); // Added
+    _confirmPasswordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _emailLocalPartController.dispose();
@@ -103,10 +97,9 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
         // Step 2: Try to link the phone credential
         try {
           await newUser.linkWithCredential(credential);
-          // If linking is successful:
           await FirebaseFirestore.instance.collection('users').doc(newUser.uid).set({
             'name': name,
-            'phone': originalPhone, // Use the original phone for Firestore
+            'phone': originalPhone, 
             'email': email,
             'createdAt': FieldValue.serverTimestamp(),
             'phoneVerified': true,
@@ -124,9 +117,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
             );
           }
         } on FirebaseAuthException catch (linkException) {
-          // If linking failed, we need to handle it.
-          // Most importantly, if it's because the phone is already in use by another account,
-          // delete the user we just created with email/password.
           if (linkException.code == 'credential-already-in-use' ||
               linkException.code == 'account-exists-with-different-credential') {
             await newUser.delete(); // Delete the orphaned email/password account
@@ -163,9 +153,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       } else if (e.code == 'invalid-email') {
         errorMessage = 'Địa chỉ email không hợp lệ.';
       }
-      // Note: 'invalid-verification-code' was removed from here as it's more relevant to OTP step or linking.
-      // 'credential-already-in-use' or 'account-exists-with-different-credential' for createUserWithEmailAndPassword
-      // means the email is problematic, not the phone yet. The phone specific check is in the linking block.
       else {
         errorMessage = 'Lỗi tạo tài khoản: ${e.message} (code: ${e.code})';
       }
@@ -175,14 +162,9 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
       });
     } catch (e) {
       if (!mounted) return;
-      // If newUser was created but a general error happened before or during deletion.
       if (newUser != null) {
         try {
-          // Attempt to delete the user if something unexpected went wrong after creation but before success.
-          // This is a fallback, the specific catches should handle deletion more gracefully.
-          // await newUser.delete(); // Commented out to avoid deleting on general errors unless specifically intended.
         } catch (deleteError) {
-          // Log or handle deletion error if necessary
           print("Error deleting user during general catch: $deleteError");
         }
       }
@@ -248,7 +230,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
     }
 
     try {
-      // Kiểm tra xem email đã tồn tại chưa
       List<String> signInMethods = await FirebaseAuth.instance.fetchSignInMethodsForEmail(_tempEmail);
       if (signInMethods.isNotEmpty) {
         if (!mounted) return;
@@ -259,15 +240,12 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
         return;
       }
 
-      // Nếu email chưa tồn tại, tiếp tục gửi OTP
       String formattedPhone = _formatPhoneNumberForFirebase(_tempPhone);
       print(">>> Sending OTP to Firebase with phone: $formattedPhone"); // THÊM DÒNG NÀY
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: formattedPhone,
         verificationCompleted: (PhoneAuthCredential credential) async {
           if (!mounted) return;
-          // Auto-verification: proceed to finalize registration
-          // Pass the temporarily stored user details
           await _finalizeRegistration(credential, _tempName, _tempPhone, _tempEmail, _tempPassword);
         },
         verificationFailed: (FirebaseAuthException e) {
@@ -363,12 +341,7 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
 
   // Phone number validation function
   bool _isValidPhoneNumber(String phone) {
-    // Remove all non-digit characters
     String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    
-    // Vietnamese phone number patterns
-    // Mobile: 03x, 05x, 07x, 08x, 09x (10 digits total)
-    // Fixed line: 02x (10 digits total)
     RegExp phoneRegex = RegExp(r'^(03|05|07|08|09|02)\d{8}$');
     
     return phoneRegex.hasMatch(cleanPhone);
@@ -524,7 +497,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                       enabled: !_isLoading, // Enable only if not loading
                     ),
                     const SizedBox(height: 10),
-                    // Thêm nút Gửi lại OTP và Chỉnh sửa thông tin
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -550,7 +522,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                         ),
                       ],
                     ),
-                    // const SizedBox(height: 10), // Khoảng cách này có thể không cần nữa tùy vào layout
                   ],
 
                   AnimatedOpacity(
@@ -586,7 +557,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                             const Color(0xFF1A73E8).withOpacity(0.6),
                         disabledForegroundColor: Colors.white.withOpacity(0.8),
                       ),
-                      // onPressed logic changes based on _showOtpInput state
                       onPressed: _isLoading ? null : (_showOtpInput ? _verifyOtpAndFinalize : _handleRegisterOrSendOtp),
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
@@ -604,7 +574,6 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
                                   color: Colors.white,
                                 ),
                               )
-                            // Change button text based on _showOtpInput state
                             : Text(
                                 _showOtpInput ? 'Xác minh OTP & Đăng ký' : 'Gửi OTP & Đăng ký',
                                 key: ValueKey(_showOtpInput ? 'verify_otp_text' : 'register_text'),

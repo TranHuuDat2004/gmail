@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pinput/pinput.dart';
 
-// TODO: Cân nhắc sử dụng package như 'pinput' để có giao diện nhập PIN đẹp hơn
-// và trực quan hơn cho người dùng, giống như hình ảnh bạn đã cung cấp.
-
 class Setup2FAScreen extends StatefulWidget {
   final String userId;
 
@@ -34,7 +31,6 @@ class _Setup2FAScreenState extends State<Setup2FAScreen> {
     final String pin = _pinController.text.trim();
     final String confirmPin = _confirmPinController.text.trim();
 
-    // Reset error messages
     setState(() {
       _pinErrorText = null;
       _confirmPinErrorText = null;
@@ -76,9 +72,6 @@ class _Setup2FAScreenState extends State<Setup2FAScreen> {
     try {
       await _firestore.collection('users').doc(widget.userId).update({
         'is2FAEnabled': true,
-        // Lưu mã PIN người dùng tự đặt.
-        // Tên field 'securityPin' được sử dụng để lưu mã PIN do người dùng định nghĩa,
-        // thay cho tên cũ 'twoFactorSecret' để rõ ràng hơn.
         'securityPin': pin, 
       });
 
@@ -90,7 +83,7 @@ class _Setup2FAScreenState extends State<Setup2FAScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context, true); // Trả về true để báo thành công
+        Navigator.pop(context, true); 
       }
     } catch (e) {
       if (mounted) {

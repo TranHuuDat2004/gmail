@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '../main.dart'; // Corrected import path for ThemeProvider
+import '../main.dart'; 
 
 class DisplaySettingsScreen extends StatefulWidget {
   const DisplaySettingsScreen({super.key});
@@ -41,7 +41,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String
       setState(() {
         _selectedEditorFont = data['fontFamily'] ?? 'Roboto';
         final loadedFontSize = (data['fontSize'] as num?)?.toDouble() ?? 14.0;
-        // Ensure the loaded font size is in our available list
         if (_availableFontSizes.contains(loadedFontSize)) {
           _selectedEditorFontSize = loadedFontSize;
         } else {
@@ -72,7 +71,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String
       await themeProvider.toggleTheme(newThemeValue, currentUser.uid);
     }
 
-    // Save editor settings to the same location as compose screen
     await _firestore
         .collection('users')
         .doc(currentUser.uid)
@@ -88,7 +86,7 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.isDarkMode;
-    final theme = Theme.of(context); // For easier access to theme properties
+    final theme = Theme.of(context); 
 
     // Define colors based on theme
     final scaffoldBackgroundColor = isDarkMode ? const Color(0xFF121212) : Colors.grey[100];
@@ -139,15 +137,12 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String
                 return Colors.grey[500];
               }),
               trackColor: MaterialStateProperty.resolveWith<Color?>((Set<MaterialState> states) {
-                // Nếu đang bật (selected) và ở light mode thì nền track là trắng hoàn toàn
                 if (!isDarkMode && states.contains(MaterialState.selected)) {
                   return Colors.white;
                 }
-                // Nếu đang bật (selected) và ở dark mode thì nền track là màu xám đậm
                 if (isDarkMode && states.contains(MaterialState.selected)) {
                   return const Color(0xFF3c4043);
                 }
-                // Mặc định
                 return null;
               }),
             ),
@@ -163,15 +158,15 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {  String
               title: Text('Editor Font Family', style: TextStyle(color: primaryTextColor)),              trailing: DropdownButton<String>(
                 value: _selectedEditorFont,
                 hint: Text('Default', style: TextStyle(color: dropdownHintColor)),
-                focusColor: Colors.transparent, // Keep transparent or theme appropriately
-                dropdownColor: dropdownBackgroundColor, // Themed dropdown background
-                iconEnabledColor: dropdownIconColor, // Themed icon color
-                style: TextStyle(color: dropdownTextColor), // Text style for items
+                focusColor: Colors.transparent, 
+                dropdownColor: dropdownBackgroundColor, 
+                iconEnabledColor: dropdownIconColor, 
+                style: TextStyle(color: dropdownTextColor), 
                 items: <String>['Arial', 'Roboto', 'TimesNewRoman']
                     .map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value, style: TextStyle(fontFamily: value, color: dropdownTextColor)), // Ensure item text color is themed and font is applied
+                    child: Text(value, style: TextStyle(fontFamily: value, color: dropdownTextColor)), 
                   );
                 }).toList(),
                 onChanged: (String? newValue) {

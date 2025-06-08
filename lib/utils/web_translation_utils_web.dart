@@ -1,16 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-// QUAN TRỌNG: API KEY CỦA BẠN.
-// NHƯ ĐÃ CẢNH BÁO, KHÔNG BAO GIỜ ĐỂ API KEY TRONG MÃ NGUỒN CLIENT CHO PRODUCTION.
-// HÃY SỬ DỤNG BACKEND PROXY.
 const String _googleApiKey = 'AIzaSyDvZzoiSCdO7cc1GI7RhLVS6oEuAIHWP24';
 
 const String _translateApiBaseUrl = 'https://translation.googleapis.com/language/translate/v2';
 
-// Hàm gọi Google Cloud API để phát hiện ngôn ngữ
 Future<String> identifyLanguageJS(String text) async {
-  if (_googleApiKey == 'YOUR_GOOGLE_CLOUD_API_KEY' || _googleApiKey.isEmpty || _googleApiKey == 'AIzaSyDvZzoiSCdO7cc1GI7RhLVS6oEuAIHWP24') { // Added your key for safety check during dev
+  if (_googleApiKey == 'YOUR_GOOGLE_CLOUD_API_KEY' || _googleApiKey.isEmpty || _googleApiKey == 'AIzaSyDvZzoiSCdO7cc1GI7RhLVS6oEuAIHWP24') { 
      if (_googleApiKey.startsWith('AIza')) {
      } else {
         print('Lỗi: Khóa API Google Cloud chưa được thiết lập đúng cách trong web_translation_utils_web.dart.');
@@ -33,9 +29,6 @@ Future<String> identifyLanguageJS(String text) async {
           data['data']['detections'] != null &&
           data['data']['detections'].isNotEmpty &&
           data['data']['detections'][0].isNotEmpty) {
-        // API trả về một list các detections, mỗi detection là một list.
-        // Ví dụ: [[{"language": "en", "confidence": 0.9, "isReliable": false}]]
-        // Chúng ta lấy language từ phần tử đầu tiên của detection đầu tiên.
         return data['data']['detections'][0][0]['language']?.toString() ?? 'und_parse_error';
       }
       print('Lỗi phân tích phản hồi phát hiện ngôn ngữ (web): $data');

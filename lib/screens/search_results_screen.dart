@@ -35,7 +35,6 @@ class SearchResultsScreen extends StatelessWidget {
                 final email = results[index];
                 bool isUnread = email['read'] == false;
 
-                // Determine if the email is a "sent" item
                 final currentUser = FirebaseAuth.instance.currentUser;
                 final bool isActuallySentItem = currentUser != null && email['senderId'] == currentUser.uid;
                 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'widgets/auth_gate.dart'; // This will be a new file
+import 'widgets/auth_gate.dart'; 
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -8,7 +8,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AuthGate(), // AuthGate will now directly return GmailUI or LoginPage
+      home: AuthGate(), 
     );
   }
 }

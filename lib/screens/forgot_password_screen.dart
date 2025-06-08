@@ -1,8 +1,7 @@
-// lib/screens/forgot_password_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Added for Firestore access
-import 'login.dart'; // For navigation after password reset
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'login.dart'; 
 
 enum ForgotPasswordStep {
   enterEmail,
@@ -31,7 +30,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   bool _isLoading = false;
   String? _message; // General message for errors or success
-  // bool _isError = false; // Can be inferred from _currentStep or specific error messages
 
   ForgotPasswordStep _currentStep = ForgotPasswordStep.enterEmail;
   String? _verificationId;
@@ -50,14 +48,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  // Helper to format phone number if needed (e.g. for display, or ensure +84 for Firebase)
+  // Helper to format phone number
   String _formatPhoneNumberForFirebase(String localPhoneNumber) {
     String cleaned = localPhoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
     if (!cleaned.startsWith('+')) {
-       // Assuming Vietnamese phone numbers if not otherwise specified
       return '+84$cleaned';
     }
     return cleaned;
@@ -94,7 +91,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
       final userData = querySnapshot.docs.first.data();
       _fullPhoneNumber = userData['phone'] as String? ?? '';
-      _uidToUpdate = querySnapshot.docs.first.id; // Get the document ID (which is the UID)
+      _uidToUpdate = querySnapshot.docs.first.id; 
 
 
       if (_fullPhoneNumber.isEmpty) {
@@ -112,22 +109,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       await _auth.verifyPhoneNumber(
         phoneNumber: firebaseFormattedPhone,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-retrieval or instant verification (less common for forgot password)
-          // If this happens, we might be able to directly sign in and proceed
-          // For now, primarily rely on codeSent
           setState(() { _isLoading = true; });
           try {
             await _auth.signInWithCredential(credential);
-            // Check if current user's UID matches the one we intend to update
             if (_auth.currentUser != null && _auth.currentUser!.uid == _uidToUpdate) {
                  setState(() {
                     _currentStep = ForgotPasswordStep.enterNewPassword;
                     _message = 'Xác minh OTP thành công (tự động). Vui lòng nhập mật khẩu mới.';
                  });
             } else {
-                // This case should be rare: OTP auto-verified for a different user than expected.
-                // Or, phone number is not linked to the email account in Auth.
-                await _auth.signOut(); // Sign out the unexpectedly signed-in user
+                await _auth.signOut();
                 setState(() {
                     _message = 'Lỗi liên kết tài khoản. Vui lòng thử lại hoặc liên hệ hỗ trợ.';
                     _currentStep = ForgotPasswordStep.error;
@@ -158,9 +149,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           });
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          // setState(() {
-          //   _verificationId = verificationId; // Store it if needed for manual resend
-          // });
         },
         timeout: const Duration(seconds: 60),
       );
@@ -188,24 +176,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         smsCode: _otpController.text.trim(),
       );
 
-      // Sign in with the phone credential.
-      // This is crucial. If the phone was linked to the email account during registration,
-      // _auth.currentUser will now be that user.
       UserCredential userCredential = await _auth.signInWithCredential(credential);
 
-      // Double check: ensure the signed-in user via OTP is the one whose email was initially entered.
-      // This relies on the phone number being correctly linked to the email account in Firebase Auth.
-      // And that _uidToUpdate (from Firestore based on email) matches the now signed-in user's UID.
       if (userCredential.user != null && userCredential.user!.uid == _uidToUpdate) {
         setState(() {
           _currentStep = ForgotPasswordStep.enterNewPassword;
-          _message = 'Xác minh OTP thành công. Vui lòng nhập mật khẩu mới.'; // Sẽ được hiển thị màu xanh lá
+          _message = 'Xác minh OTP thành công. Vui lòng nhập mật khẩu mới.'; 
           _isLoading = false;
         });
       } else {
-        // If UIDs don't match, something is wrong (e.g., phone linked to a different account,
-        // or data inconsistency between Firestore and Auth).
-        // For security, sign out this user and show an error.
         await _auth.signOut();
         setState(() {
           _message = 'Lỗi xác thực người dùng. Không thể cập nhật mật khẩu. Vui lòng thử lại hoặc liên hệ hỗ trợ.';
@@ -222,8 +201,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       }
       setState(() {
         _message = errorMessage;
-        // Keep in OTP step for retry, or could go to error step
-        // _currentStep = ForgotPasswordStep.error; 
         _isLoading = false;
       });
     } catch (e) {
@@ -253,7 +230,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _currentStep = ForgotPasswordStep.error; // Or back to enterEmail
         _isLoading = false;
       });
-      // Attempt to sign out if there's an unexpected user session
       if (currentUser != null) await _auth.signOut();
       return;
     }
@@ -265,10 +241,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _message = 'Mật khẩu của bạn đã được cập nhật thành công!';
         _isLoading = false;
       });
-      // Optionally, sign the user out after password update for security
-      // await _auth.signOut();
-
-      // Navigate to login page after a delay
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
@@ -283,17 +255,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (e.code == 'weak-password') {
         errorMessage = 'Mật khẩu mới quá yếu.';
       } else if (e.code == 'requires-recent-login') {
-        // This *shouldn't* happen if signInWithCredential worked as a recent login.
-        // If it does, the assumption about signInWithCredential refreshing auth state for updatePassword is wrong.
         errorMessage = 'Thao tác này yêu cầu đăng nhập gần đây. Vui lòng thử lại từ đầu.';
-         // Sign out and force restart of the process
         await _auth.signOut();
         _currentStep = ForgotPasswordStep.enterEmail; // Force restart
       }
       setState(() {
         _message = errorMessage;
-        // Potentially stay on new password screen for retry, or go to error
-        // _currentStep = ForgotPasswordStep.error;
         _isLoading = false;
       });
     } catch (e) {
@@ -409,18 +376,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     Color textColor;
 
     if (displayedText == otpSentSuccessMessage || displayedText == defaultOtpPrompt) {
-      // If the message is one of the success/info OTP messages
-      // Check if it's overridden by an actual error message content (though _currentStep should ideally be .error)
       if (_message != null && (_currentStep == ForgotPasswordStep.error || _message!.toLowerCase().contains('lỗi') || _message!.toLowerCase().contains('thất bại'))) {
         textColor = Colors.redAccent;
       } else {
-        textColor = Colors.green; // Make it green
+        textColor = Colors.green; 
       }
     } else if (_message != null && (_currentStep == ForgotPasswordStep.error || _message!.toLowerCase().contains('lỗi') || _message!.toLowerCase().contains('thất bại'))) {
-      // For other messages that are errors
       textColor = Colors.redAccent;
     } else {
-      // Fallback for any other neutral messages
       textColor = Colors.black54;
     }
 
@@ -439,9 +402,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            displayedText, // Use the determined displayedText
+            displayedText,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: textColor), // Apply the determined color
+            style: TextStyle(fontSize: 15, color: textColor),
           ),
           const SizedBox(height: 28),
           TextFormField(
@@ -521,7 +484,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           const SizedBox(height: 12),
            Text(
-            // Hiển thị _message, nếu là thông báo thành công OTP thì sẽ có màu xanh
             _message ?? 'Vui lòng nhập mật khẩu mới cho tài khoản của bạn.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15, 
@@ -720,16 +682,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       case ForgotPasswordStep.error:
         currentStepWidget = _buildErrorStep(context);
         break;
-      // No default case needed as all enum values are handled.
     }
 
-    // Common message display area if not handled within steps or for global messages
     Widget globalMessageWidget = const SizedBox.shrink();
     if (_message != null && 
-        _currentStep != ForgotPasswordStep.enterOtp && // OTP step has its own message display
-        _currentStep != ForgotPasswordStep.enterNewPassword && // New password step also
-        _currentStep != ForgotPasswordStep.success && // Success step has its own
-        _currentStep != ForgotPasswordStep.error) { // Error step has its own
+        _currentStep != ForgotPasswordStep.enterOtp && 
+        _currentStep != ForgotPasswordStep.enterNewPassword && 
+        _currentStep != ForgotPasswordStep.success && 
+        _currentStep != ForgotPasswordStep.error) { 
       globalMessageWidget = Padding(
         padding: const EdgeInsets.only(top: 20.0),
         child: Text(
@@ -760,7 +720,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           }
           return false; // Prevent default pop
         }
-        // For other steps, allow default pop (which should go to LoginPage or exit app if it's the first screen)
         return true; 
       },
       child: Scaffold(
@@ -784,7 +743,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   );
                 }
               } else {
-                // For enterEmail, success, error, pop normally
                 Navigator.of(context).pop();
               }
             },
@@ -814,7 +772,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     duration: const Duration(milliseconds: 300),
                     child: currentStepWidget,
                   ),
-                  globalMessageWidget, // Display global messages if any
+                  globalMessageWidget, 
                 ],
               ),
             ),

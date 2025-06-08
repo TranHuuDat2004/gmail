@@ -1,9 +1,7 @@
-// lib/settings_screen.dart
 import 'package:flutter/material.dart';
-import 'profile_screen.dart'; // Dẫn đến ProfileScreen
+import 'profile_screen.dart'; 
 import 'notification_settings_screen.dart';
 import 'display_settings_screen.dart';
-// import 'two_fa_screen.dart'; // Bạn sẽ tạo màn hình này sau nếu cần
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});  
@@ -29,10 +27,6 @@ class SettingsScreen extends StatelessWidget {
             subtitle: Text('Thông tin cá nhân, mật khẩu, 2FA', style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Color(0xFFB0B3B8) : Colors.grey[800])),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFE8EAED)),
             onTap: () {
-              // Mục này có thể dẫn đến một màn hình con khác liệt kê
-              // Profile, Change Password, 2FA riêng biệt,
-              // hoặc trực tiếp đến ProfileScreen như hiện tại.
-              // Để đơn giản, ta sẽ dẫn đến ProfileScreen trước.
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ProfileScreen()),

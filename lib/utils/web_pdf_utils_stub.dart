@@ -1,4 +1,3 @@
-// Stub implementation for non-web platforms
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
@@ -21,7 +20,6 @@ class WebPdfViewerScreen extends StatelessWidget {
   }
 }
 
-// Stub function that throws an error for non-web platforms
 Widget createWebPdfViewer(Uint8List pdfBytes, String fileName) {
   return WebPdfViewerScreen(pdfBytes: pdfBytes, fileName: fileName);
 }

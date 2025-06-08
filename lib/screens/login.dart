@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gmail/screens/register.dart';
 import 'package:gmail/screens/gmail_ui.dart';
-import 'forgot_password_screen.dart'; // Đảm bảo import này là chính xác
+import 'forgot_password_screen.dart'; 
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,11 +12,11 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
-  final TextEditingController _emailController = TextEditingController(); // Renamed from _phoneController
+  final TextEditingController _emailController = TextEditingController(); 
   final TextEditingController _passwordController = TextEditingController();
   String? _error;
   bool _isLoading = false;
-  late AnimationController _animationController; // Đổi tên thống nhất
+  late AnimationController _animationController; 
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
 
@@ -25,7 +25,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController( // Đổi tên _controller thành _animationController
+    _animationController = AnimationController( 
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
@@ -37,8 +37,8 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   }
   @override
   void dispose() {
-    _animationController.dispose(); // Đổi tên _controller thành _animationController
-    _emailController.dispose(); // Renamed from _phoneController
+    _animationController.dispose(); 
+    _emailController.dispose(); 
     _passwordController.dispose();
     super.dispose();
   }
@@ -61,22 +61,17 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     }
 
     try {
-      // Thực hiện đăng nhập bằng Firebase Authentication
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       
-      // Nếu đăng nhập thành công, StreamBuilder trong main.dart sẽ tự động xử lý điều hướng
-      // Bạn có thể hiển thị SnackBar nếu muốn, nhưng không cần Navigator.pushReplacement ở đây nữa
-      // vì StreamBuilder sẽ làm điều đó.
       if (mounted && userCredential.user != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đăng nhập thành công!'), duration: Duration(seconds: 1)), // Giảm thời gian SnackBar một chút
+          const SnackBar(content: Text('Đăng nhập thành công!'), duration: Duration(seconds: 1)), 
         );
-        // Điều hướng ngay lập tức và xóa các trang trước đó khỏi stack
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => GmailUI()), // Đảm bảo GmailUI không có const nếu là StatefulWidget
+          MaterialPageRoute(builder: (context) => GmailUI()), 
           (Route<dynamic> route) => false,
         );
       }
@@ -90,7 +85,6 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         } else if (e.code == 'user-disabled') {
           errorMessage = 'Tài khoản này đã bị vô hiệu hóa.';
         }
-        // Thêm các mã lỗi khác nếu cần
         setState(() {
           _error = errorMessage;
         });
@@ -124,7 +118,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       backgroundColor: Colors.white,
       body: Center(
         child: AnimatedBuilder(
-          animation: _animationController, // Sử dụng _animationController
+          animation: _animationController, 
           builder: (context, child) => Opacity(
             opacity: _fadeAnim.value,
             child: Transform.scale(
@@ -163,7 +157,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 24),
                   TextField(
-                    controller: _emailController, // Ensure this uses the renamed _emailController
+                    controller: _emailController,
                     cursorColor: Colors.grey,
                     decoration: const InputDecoration(
                       labelText: 'Email',
@@ -189,7 +183,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     obscureText: true,
                     enabled: !_isLoading,
                   ),
-                  // Thêm nút "Quên mật khẩu?"
+                  //  "Quên mật khẩu?"
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Align(
