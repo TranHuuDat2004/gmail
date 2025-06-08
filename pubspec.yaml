@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.4.0 <4.0.0" # SDK này hơi cũ, xem xét nâng cấp lên >=2.19.0 hoặc >=3.0.0 nếu có thể
+  sdk: ">=3.4.0 <4.0.0" 
 
 dependencies:
   flutter:
@@ -25,25 +25,24 @@ dependencies:
   js: ^0.7.0
   
   shared_preferences: ^2.2.2
-  # Các gói khác
   http: ^1.2.0
   intl: ^0.19.0
-  firebase_core: ^3.13.1 # Added firebase_core
+  firebase_core: ^3.13.1 
   firebase_auth: ^5.5.4
   cloud_firestore: ^5.6.8
   firebase_app_check: ^0.3.2+6
-  firebase_storage: ^12.2.1 # Ensure you have a version specified
+  firebase_storage: ^12.2.1 
   provider: ^6.1.5  
   flutter_quill: ^9.3.10
   flutter_quill_extensions: ^9.3.10
   emoji_picker_flutter: ^3.1.0
   vsc_quill_delta_to_html: ^1.0.5
   flutter_widget_from_html_core: ^0.14.11
-  syncfusion_flutter_pdfviewer: ^28.1.37 # Added for PDF viewing
+  syncfusion_flutter_pdfviewer: ^28.1.37 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0 # Hoặc ^4.0.0 nếu có
+  flutter_lints: ^5.0.0 
 
 flutter:
   uses-material-design: true
