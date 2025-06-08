@@ -62,7 +62,6 @@ class NotificationService {
         _allowNotifications = data['allowNotifications'] ?? true;
       }
     }, onError: (error) {
-      print('Error listening to notification settings: $error');
     });
   }
 
@@ -93,7 +92,6 @@ class NotificationService {
         _lastEmailId = emailId;
       }
     }, onError: (error) {
-      print('Error listening to emails: $error');
     });
   }
   void _showNewEmailNotification({

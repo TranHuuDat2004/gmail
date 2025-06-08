@@ -101,19 +101,10 @@ class _GmailUIState extends State<GmailUI> {
             _isLoadingEmails = false;
           });
         }
-      }, onError: (error) {
-        print("Error listening to drafts: $error");
-        if (mounted) {
+      }, onError: (error) {        if (mounted) {
           setState(() {
             _isLoadingEmails = false;
             _emails = [];
-          });
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error fetching drafts: $error')),
-              );
-            }
           });
         }
       });
@@ -333,36 +324,19 @@ class _GmailUIState extends State<GmailUI> {
             _isLoadingEmails = false;
           });
         }
-      }, onError: (error) {
-        print("Error listening to email snapshots: $error");
-        if (mounted) {
+      }, onError: (error) {        if (mounted) {
           setState(() {
             _isLoadingEmails = false;
             _emails = []; // Clear emails on error
           });
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error fetching emails: $error')),
-              );
-            }
-          });
         }
       });
     }
-  } catch (e) {
-    print("Error in _fetchEmails outer try-catch: $e");
+  } catch (e) {    print("Error in _fetchEmails outer try-catch: $e");
     if (mounted) {
       setState(() {
         _isLoadingEmails = false;
         _emails = [];
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error fetching emails: $e')),
-          );
-        }
       });
     }
   }
@@ -485,18 +459,10 @@ class _GmailUIState extends State<GmailUI> {
       setState(() {
         _emails = filteredEmails;
         _isLoadingEmails = false;
-      });
-    } catch (e) {
+      });    } catch (e) {
       setState(() {
         _isLoadingEmails = false;
         _emails = [];
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi tìm kiếm: $e')),
-          );
-        }
       });
     }
   }

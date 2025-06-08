@@ -119,7 +119,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
           });
         }
       }, onError: (error) {
-        print("Error listening to emails for counting: $error");
+       
         if (mounted) {
           setState(() {
             _isLoadingCounts = false;
@@ -149,7 +149,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
           });
         }
       }, onError: (error) {
-        print("Error listening to drafts for counting: $error");
+       
         if (mounted) {
           setState(() {
             _isLoadingCounts = false;
@@ -157,7 +157,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
         }
       });
     } catch (e) {
-      print("Error loading emails for counting: $e");
+     
       if (mounted) {
         setState(() {
           _isLoadingCounts = false;
