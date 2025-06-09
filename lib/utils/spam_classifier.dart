@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 class SpamClassifier {
   static const String _geminiApiKey = 'AIzaSyDcgUBrSj6_CZogqS3OXPfyCTf-z3gbqHc';
   static const String _geminiApiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+
   static Future<bool> classifyEmail({
     required String subject,
     required String body,
@@ -23,17 +24,19 @@ Body: ${body.trim()}
       final requestBody = {
         "contents": [
           {
-            "parts": [              {
+            "parts": [
+              {
                 "text": "Analyze this email and respond with only one word: 'spam' or 'ham'. Consider promotional content, suspicious links, fake offers, phishing attempts as spam. Regular personal/business emails as ham.\n\nEmail:\n$emailContent"
               }
             ]
           }
-        ],        "generationConfig": {
+        ],
+        "generationConfig": {
           "temperature": 0.3,
           "maxOutputTokens": 10
         }
       };
-
+      
       final response = await http.post(
         Uri.parse('$_geminiApiUrl?key=$_geminiApiKey'),
         headers: {
@@ -44,6 +47,7 @@ Body: ${body.trim()}
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
+        
         final candidates = responseData['candidates'] as List?;
         
         if (candidates != null && candidates.isNotEmpty) {
@@ -54,15 +58,12 @@ Body: ${body.trim()}
             final text = parts[0]['text'] as String?;
             final classification = text?.trim().toLowerCase();
             
-            print('AI Classification result: $classification');
             return classification == 'spam';
           }
         }
-      } else {
-        print('⚠️ API Error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      print('Error classifying email: $e');
+      // Silent error handling
     }
     
     return false;
@@ -74,8 +75,9 @@ Body: ${body.trim()}
     required bool isSpam,
   }) async {
     try {
+      // Implementation if needed
     } catch (e) {
-      print('Error marking email as spam: $e');
+      // Silent error handling
     }
   }
 }

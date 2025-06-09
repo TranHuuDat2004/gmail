@@ -45,73 +45,106 @@ class _GmailUIState extends State<GmailUI> {
         _fetchEmails(); 
       }
     });
-  }
-
-  /// Automatically classify emails for spam using AI(gemini api flash 1.5)
+  }  /// Automatically classify emails for spam using AI(gemini api flash 1.5)
   Future<void> _classifyEmailForSpam(String emailId, String userId) async {
     try {
       final emailDoc = await _firestore.collection('emails').doc(emailId).get();
-      if (!emailDoc.exists) return;
+      if (!emailDoc.exists) {
+        return;
+      }
 
       final emailData = emailDoc.data() as Map<String, dynamic>;
       final emailLabelsMap = emailData['emailLabels'] as Map<String, dynamic>?;
       final userLabels = emailLabelsMap?[userId] as List<dynamic>?;
       final senderId = emailData['senderId'] as String?;
+      final spamClassified = emailData['spamClassified'] as bool? ?? false;
+      final timestamp = emailData['timestamp'] as Timestamp?;
+      final emailTime = timestamp?.toDate();
       
-      if (senderId == userId || userLabels?.contains('Spam') == true || emailData['spamClassified'] == true) {
+      // Check if email is recent (within last 5 minutes)
+      final isRecentEmail = emailTime != null && 
+          emailTime.isAfter(DateTime.now().subtract(const Duration(minutes: 5)));
+      
+      if (senderId == userId) {
         return;
       }
-
-      final subject = emailData['subject'] as String? ?? '';
+      if (userLabels?.contains('Spam') == true) {
+        return;
+      }
+      
+      // For debugging: Allow re-classification of recent emails even if spamClassified=true
+      if (spamClassified && !isRecentEmail) {
+        return;
+      } else if (spamClassified && isRecentEmail) {
+        print('🔄 [SPAM_CLASSIFIER] Re-classifying recent email despite spamClassified=true');
+      }final subject = emailData['subject'] as String? ?? '';
       final body = emailData['bodyPlainText'] as String? ?? emailData['body'] as String? ?? '';
       final from = emailData['from'] as String? ?? '';
 
+      print('📝 [SPAM_CLASSIFIER] Email content:');
+      print('   - Subject: ${subject.length > 50 ? subject.substring(0, 50) + "..." : subject}');
+      print('   - Body length: ${body.length}');
+      print('   - From: $from');
+
       if (subject.trim().isEmpty && body.trim().isEmpty) {
+        print('⚠️ [SPAM_CLASSIFIER] Empty email content, marking as classified without API call');
         await _firestore.collection('emails').doc(emailId).update({'spamClassified': true});
         return;
       }
 
+      print('🚀 [SPAM_CLASSIFIER] Starting API call to Gemini...');
       bool isSpam = false;
       bool classificationSuccessful = false;
       
       try {
+        print('🔄 [SPAM_CLASSIFIER] Calling SpamClassifier.classifyEmail...');
         isSpam = await SpamClassifier.classifyEmail(
           subject: subject,
           body: body,
           from: from,
-        ).timeout(const Duration(seconds: 10), onTimeout: () => false);
+        ).timeout(const Duration(seconds: 10), onTimeout: () {
+          print('⏰ [SPAM_CLASSIFIER] API call timed out after 10 seconds');
+          return false;
+        });
         classificationSuccessful = true;
+        print('✅ [SPAM_CLASSIFIER] API call successful. Result: ${isSpam ? "SPAM" : "HAM"}');
       } catch (e) {
+        print('❌ [SPAM_CLASSIFIER] API call failed: $e');
         isSpam = false;
         classificationSuccessful = false;
-      }
-      
+      }      
       Map<String, dynamic> currentEmailLabels = Map<String, dynamic>.from(emailLabelsMap ?? {});
       List<String> currentUserLabels = List<String>.from(currentEmailLabels[userId] ?? []);
+      
+      print('🏷️ [SPAM_CLASSIFIER] Processing labels...');
+      print('   - Current labels before: $currentUserLabels');
+      print('   - Classification successful: $classificationSuccessful');
+      print('   - Is spam: $isSpam');
       
       if (isSpam && classificationSuccessful) {
         if (!currentUserLabels.contains('Spam')) {
           currentUserLabels.add('Spam');
+          print('   - Added Spam label');
         }
         currentUserLabels.remove('Inbox');
+        print('   - Removed Inbox label');
       } else {
         if (!currentUserLabels.contains('Inbox')) {
           currentUserLabels.add('Inbox');
+          print('   - Added Inbox label');
         }
       }
       
       currentEmailLabels[userId] = currentUserLabels;
-      
+      print('   - Final labels: $currentUserLabels');        print('💾 [SPAM_CLASSIFIER] Updating database...');
       await _firestore.collection('emails').doc(emailId).update({
         'emailLabels': currentEmailLabels,
         'spamClassified': true,
       });
-    } catch (e) {
-      try {
-        await _firestore.collection('emails').doc(emailId).update({'spamClassified': true});
-      } catch (updateError) {
-        print('Error marking email as classified: $updateError');
-      }
+      print('✅ [SPAM_CLASSIFIER] Database updated successfully');} catch (e) {
+      print('❌ [SPAM_CLASSIFIER] Error in classification process: $e');
+      // Don't mark as classified if there was an error
+      print('❌ [SPAM_CLASSIFIER] Error occurred, not marking as classified to allow retry');
     }
   }
 
@@ -574,6 +607,29 @@ class _GmailUIState extends State<GmailUI> {
       });
     }
   }
+  /// Temporarily reset spam classification for testing
+  Future<void> _resetSpamClassification() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+    
+    try {
+      final snapshot = await _firestore.collection('emails')
+          .where('involvedUserIds', arrayContains: currentUser.uid)
+          .get();
+      
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'spamClassified': false});
+      }
+      
+      await batch.commit();
+      
+      // Refresh emails
+      _fetchEmails();
+    } catch (e) {
+      // Silent error handling
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -647,8 +703,7 @@ class _GmailUIState extends State<GmailUI> {
                     ),
                   ),
                 ),
-              ),
-              Padding(
+              ),              Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: GestureDetector(
                   onTap: () async {
@@ -672,6 +727,16 @@ class _GmailUIState extends State<GmailUI> {
                   ),
                 ),
               ),
+              // Debug button to reset spam classification
+              if (selectedLabel == "Spam")
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: IconButton(
+                    icon: Icon(Icons.refresh, color: theme.iconTheme.color),
+                    tooltip: 'Reset spam classification',
+                    onPressed: _resetSpamClassification,
+                  ),
+                ),
             ],
           ),
         ),
