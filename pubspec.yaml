@@ -15,17 +15,18 @@ dependencies:
   pinput: ^4.0.0 
 
   
-  dio: ^5.4.0                    # For file download
-  path_provider: ^2.1.2         # To get Downloads folder
-  permission_handler: ^11.2.0   # For storage permissions
-  url_launcher: ^6.2.1          # For web downloads
+  dio: ^5.4.0                    
+  path_provider: ^2.1.2        
+  permission_handler: ^11.2.0   
+  url_launcher: ^6.2.1         
 
   google_mlkit_language_id: ^0.11.0
   google_mlkit_translation: ^0.11.0
   js: ^0.7.0
-  
-  shared_preferences: ^2.2.2
   http: ^1.2.0
+
+  shared_preferences: ^2.2.2
+  
   intl: ^0.19.0
   firebase_core: ^3.13.1 
   firebase_auth: ^5.5.4

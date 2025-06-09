@@ -318,16 +318,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     if (quotedDocument == null) {
       String originalBody = email['bodyPlainText'] ?? email['body'] ?? email['bodyContent'] ?? '';
       quotedDocument = quill.Document()..insert(0, originalBody);
-    }
-
-    if (widget.composeMode == 'reply') {
+    }    if (widget.composeMode == 'reply') {
       _toController.text = originalSender;
       _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
           ? originalSubject
           : "Re: $originalSubject";
       
-      _quillController.document = quill.Document()..insert(0, "\n\n");
-      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
+      // Chỉ tạo document trống cho reply, không include nội dung cũ
+      _quillController.document = quill.Document();
     } else if (widget.composeMode == 'replyAll') {
       _toController.text = originalSender;
       List<String> originalCc = List<String>.from(email['ccRecipients'] ?? []);
@@ -336,14 +334,15 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
           ? originalSubject
           : "Re: $originalSubject";
       
-      _quillController.document = quill.Document()..insert(0, "\n\n");
-      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
+      // Chỉ tạo document trống cho reply all, không include nội dung cũ
+      _quillController.document = quill.Document();
     } else if (widget.composeMode == 'forward') {
       _subjectController.text = originalSubject.toLowerCase().startsWith("fwd:")
           ? originalSubject
           : "Fwd: $originalSubject";
       
-      _quillController.document = quill.Document()..insert(0, "\n\n");
+      // Cho forward, có thể include nội dung cũ
+      _quillController.document = quill.Document()..insert(0, "\n\n--- Forwarded Message ---\n");
       _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
     }
     _quillController.moveCursorToPosition(0);
@@ -739,9 +738,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       final bodyDeltaJson = jsonEncode(_quillController.document.toDelta().toJson());
 
       final String? finalSubject = _subjectController.text.trim().isEmpty ? null : _subjectController.text.trim();
-      final String? finalBodyPlainText = bodyPlainText.trim().isEmpty ? null : bodyPlainText.trim();
-
-      final emailData = {
+      final String? finalBodyPlainText = bodyPlainText.trim().isEmpty ? null : bodyPlainText.trim();      final emailData = {
         'senderId': currentSenderId,
         'from': userEmail,
         'toRecipients': toRecipients,
@@ -753,7 +750,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         'bodyDeltaJson': bodyDeltaJson,
         'timestamp': FieldValue.serverTimestamp(),
         'attachments': attachmentUrls,
-        'hasAttachment': attachmentUrls.isNotEmpty, 
+        'hasAttachment': attachmentUrls.isNotEmpty,
         'emailLabels': emailLabels,
         'emailIsReadBy': emailIsReadBy,
         'involvedUserIds': involvedUserIds.toSet().toList(),
