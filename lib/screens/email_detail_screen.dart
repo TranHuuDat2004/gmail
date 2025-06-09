@@ -39,8 +39,15 @@ import 'file_viewer_screen.dart';
 
 class EmailDetailScreen extends StatefulWidget {
   final Map<String, dynamic> email; 
-  final bool? isSentView; 
-  const EmailDetailScreen({super.key, required this.email, this.isSentView});
+  final bool? isSentView;
+  final Function(String, String, bool)? toggleSpamStatus;
+
+  const EmailDetailScreen({
+    super.key, 
+    required this.email, 
+    this.isSentView,
+    this.toggleSpamStatus,
+  });
 
   @override
   State<EmailDetailScreen> createState() => _EmailDetailScreenState();
@@ -1117,7 +1124,7 @@ Future<void> _deleteEmail() async {
           onPressed: () {
             Navigator.pop(context, _emailDataWasUpdated ? widget.email : null);
           },
-        ),actions: [
+        ),        actions: [
           if (!isInTrash) ...[
             IconButton(
               icon: Icon(
@@ -1127,6 +1134,14 @@ Future<void> _deleteEmail() async {
               ),
               onPressed: _toggleStarStatus,
               tooltip: _isStarredLocally ? 'Bỏ gắn dấu sao' : 'Gắn dấu sao',
+            ),
+            IconButton(
+              icon: Icon(
+                _isSpamEmail() ? Icons.report : Icons.report_outlined,
+                color: _isSpamEmail() ? Colors.red : appBarIconColor,
+              ),
+              tooltip: _isSpamEmail() ? 'Bỏ khỏi thư rác' : 'Đánh dấu thư rác',
+              onPressed: _toggleSpamLabel,
             ),
             IconButton(
               icon: const Icon(Icons.label_outline),
@@ -1480,14 +1495,15 @@ Future<void> _deleteEmail() async {
             Expanded(
               child: ActionButton(
                 icon: Icons.reply_outlined,
-                label: "Trả lời",
-                onTap: () {
+                label: "Trả lời",                onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => ComposeEmailScreen(
                         replyOrForwardEmail: widget.email,
                         composeMode: 'reply',
+                        isReply: true,
+                        originalEmail: widget.email,
                       ),
                     ),
                   );
@@ -1500,14 +1516,15 @@ Future<void> _deleteEmail() async {
               Expanded(
                 child: ActionButton(
                   icon: Icons.reply_all_outlined,
-                  label: "Trả lời tất cả",
-                  onTap: () {
+                  label: "Trả lời tất cả",                  onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => ComposeEmailScreen(
                           replyOrForwardEmail: widget.email,
                           composeMode: 'replyAll',
+                          isReplyAll: true,
+                          originalEmail: widget.email,
                         ),
                       ),
                     );
@@ -1725,6 +1742,62 @@ Future<void> _deleteEmail() async {
       }
     }
   }
+
+  bool _isSpamEmail() {
+    if (_currentUser == null) return false;
+    final emailLabelsMap = widget.email['emailLabels'] as Map<String, dynamic>?;
+    if (emailLabelsMap != null && emailLabelsMap[_currentUser!.uid] is List) {
+      final userLabels = List<String>.from(emailLabelsMap[_currentUser!.uid] as List);
+      return userLabels.contains('Spam');
+    }
+    return false;
+  }
+
+  Future<void> _toggleSpamLabel() async {
+    if (_currentUser == null || widget.email['id'] == null) return;
+    
+    final isCurrentlySpam = _isSpamEmail();
+    
+    try {
+      if (widget.toggleSpamStatus != null) {
+        await widget.toggleSpamStatus!(
+          widget.email['id'], 
+          _currentUser!.uid, 
+          !isCurrentlySpam
+        );
+        
+        if (mounted) {
+          setState(() {
+            final emailLabelsMap = widget.email['emailLabels'] as Map<String, dynamic>? ?? {};
+            final userLabels = List<String>.from(emailLabelsMap[_currentUser!.uid] ?? []);
+            
+            if (!isCurrentlySpam) {
+              if (!userLabels.contains('Spam')) {
+                userLabels.add('Spam');
+              }
+              userLabels.remove('Inbox');
+            } else {
+              userLabels.remove('Spam');
+              if (!userLabels.contains('Inbox')) {
+                userLabels.add('Inbox');
+              }
+            }
+            
+            emailLabelsMap[_currentUser!.uid] = userLabels;
+            widget.email['emailLabels'] = emailLabelsMap;
+            _emailDataWasUpdated = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error toggling spam status: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating spam status: $e')),
+        );
+      }
+    }
+  }
   @override
   void dispose() {
     if (!kIsWeb) {
@@ -1735,9 +1808,8 @@ Future<void> _deleteEmail() async {
   }
 
   // Helper function to get BCP-47 code from TranslateLanguage
-  // Helper function to get BCP-47 code from TranslateLanguage
-String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: Parameter is nullable
-  if (lang == null) return 'und'; // ADDED: Handle null case
+String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { 
+  if (lang == null) return 'und'; 
 
   final Map<mlkit_translation.TranslateLanguage, String> bcp47Map = {
     mlkit_translation.TranslateLanguage.afrikaans: 'af', mlkit_translation.TranslateLanguage.albanian: 'sq', mlkit_translation.TranslateLanguage.arabic: 'ar',
@@ -1791,7 +1863,7 @@ String _getBcp47Code(mlkit_translation.TranslateLanguage? lang) { // MODIFIED: P
   // Helper function to get TranslateLanguage from BCP-47 code
   mlkit_translation.TranslateLanguage? _getTranslateLanguageFromBcp47(String bcp47Code) { 
     final String lowerCode = bcp47Code.toLowerCase();
-    if (lowerCode == 'und') return null; // ADDED: Handle "und"
+    if (lowerCode == 'und') return null; 
 
     for (final langEnum in mlkit_translation.TranslateLanguage.values) {
       if (_getBcp47Code(langEnum) == lowerCode) {

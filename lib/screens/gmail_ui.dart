@@ -7,6 +7,7 @@ import '../widgets/custom_drawer.dart';
 import 'email_detail_screen.dart';
 import 'compose_email_screen.dart';
 import '../widgets/email_list_item.dart';
+import '../utils/spam_classifier.dart';
 import 'dart:async';
 
 class GmailUI extends StatefulWidget {
@@ -34,7 +35,6 @@ class _GmailUIState extends State<GmailUI> {
   final List<String> userLabels = [];
 
   final TextEditingController _searchController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -45,6 +45,115 @@ class _GmailUIState extends State<GmailUI> {
         _fetchEmails(); 
       }
     });
+  }
+
+  /// Automatically classify emails for spam using AI(gemini api flash 1.5)
+  Future<void> _classifyEmailForSpam(String emailId, String userId) async {
+    try {
+      final emailDoc = await _firestore.collection('emails').doc(emailId).get();
+      if (!emailDoc.exists) return;
+
+      final emailData = emailDoc.data() as Map<String, dynamic>;
+      final emailLabelsMap = emailData['emailLabels'] as Map<String, dynamic>?;
+      final userLabels = emailLabelsMap?[userId] as List<dynamic>?;
+      final senderId = emailData['senderId'] as String?;
+      
+      if (senderId == userId || userLabels?.contains('Spam') == true || emailData['spamClassified'] == true) {
+        return;
+      }
+
+      final subject = emailData['subject'] as String? ?? '';
+      final body = emailData['bodyPlainText'] as String? ?? emailData['body'] as String? ?? '';
+      final from = emailData['from'] as String? ?? '';
+
+      if (subject.trim().isEmpty && body.trim().isEmpty) {
+        await _firestore.collection('emails').doc(emailId).update({'spamClassified': true});
+        return;
+      }
+
+      bool isSpam = false;
+      bool classificationSuccessful = false;
+      
+      try {
+        isSpam = await SpamClassifier.classifyEmail(
+          subject: subject,
+          body: body,
+          from: from,
+        ).timeout(const Duration(seconds: 10), onTimeout: () => false);
+        classificationSuccessful = true;
+      } catch (e) {
+        isSpam = false;
+        classificationSuccessful = false;
+      }
+      
+      Map<String, dynamic> currentEmailLabels = Map<String, dynamic>.from(emailLabelsMap ?? {});
+      List<String> currentUserLabels = List<String>.from(currentEmailLabels[userId] ?? []);
+      
+      if (isSpam && classificationSuccessful) {
+        if (!currentUserLabels.contains('Spam')) {
+          currentUserLabels.add('Spam');
+        }
+        currentUserLabels.remove('Inbox');
+      } else {
+        if (!currentUserLabels.contains('Inbox')) {
+          currentUserLabels.add('Inbox');
+        }
+      }
+      
+      currentEmailLabels[userId] = currentUserLabels;
+      
+      await _firestore.collection('emails').doc(emailId).update({
+        'emailLabels': currentEmailLabels,
+        'spamClassified': true,
+      });
+    } catch (e) {
+      try {
+        await _firestore.collection('emails').doc(emailId).update({'spamClassified': true});
+      } catch (updateError) {
+        print('Error marking email as classified: $updateError');
+      }
+    }
+  }
+
+  /// Toggle spam status for an email
+  Future<void> _toggleSpamStatus(String emailId, String userId, bool isSpam) async {
+    try {
+      final emailDoc = await _firestore.collection('emails').doc(emailId).get();
+      if (!emailDoc.exists) return;
+
+      final emailData = emailDoc.data() as Map<String, dynamic>;
+      final emailLabelsMap = emailData['emailLabels'] as Map<String, dynamic>?;
+      
+      Map<String, dynamic> currentEmailLabels = Map<String, dynamic>.from(emailLabelsMap ?? {});
+      List<String> currentUserLabels = List<String>.from(currentEmailLabels[userId] ?? []);
+      
+      if (isSpam) {
+        if (!currentUserLabels.contains('Spam')) {
+          currentUserLabels.add('Spam');
+        }
+        currentUserLabels.remove('Inbox');
+      } else {
+        currentUserLabels.remove('Spam');
+        if (!currentUserLabels.contains('Inbox')) {
+          currentUserLabels.add('Inbox');
+        }
+      }
+      
+      currentEmailLabels[userId] = currentUserLabels;
+      
+      await _firestore.collection('emails').doc(emailId).update({
+        'emailLabels': currentEmailLabels,
+        'spamClassified': true,
+      });
+      
+      _fetchEmails();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating spam status: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _fetchEmails() async {
@@ -224,37 +333,43 @@ class _GmailUIState extends State<GmailUI> {
     } else { 
       Query query = _firestore.collection('emails');
       query = query.where('involvedUserIds', arrayContains: currentUser.uid);
-      query = query.orderBy('timestamp', descending: true);
+      query = query.orderBy('timestamp', descending: true);        _emailStreamSubscription = query.snapshots().listen((snapshot) {
+          final allUserEmails = snapshot.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            data['id'] = doc.id;
 
-      _emailStreamSubscription = query.snapshots().listen((snapshot) {
-        final allUserEmails = snapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          data['id'] = doc.id;
+            final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
+            bool isUnread = true;
+            if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
+              isUnread = false;
+            }
+            data['isUnread'] = isUnread;
 
-          final emailIsReadBy = data['emailIsReadBy'] as Map<String, dynamic>?;
-          bool isUnread = true;
-          if (emailIsReadBy != null && emailIsReadBy[currentUser.uid] == true) {
-            isUnread = false;
+            final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
+            bool isStarred = false;
+            if (emailLabelsMap != null &&
+                emailLabelsMap[currentUser.uid] is List &&
+                (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
+              isStarred = true;
+            }
+            data['starred'] = isStarred;
+            data['isDraft'] = false;
+            return data;
+          }).toList();          // Classify new emails for spam
+          for (var email in allUserEmails) {
+            final emailId = email['id'] as String;
+            final spamClassified = email['spamClassified'] as bool? ?? false;
+            
+            if (!spamClassified) {
+              _classifyEmailForSpam(emailId, currentUser.uid);
+            }
           }
-          data['isUnread'] = isUnread;
 
-          final emailLabelsMap = data['emailLabels'] as Map<String, dynamic>?;
-          bool isStarred = false;
-          if (emailLabelsMap != null &&
-              emailLabelsMap[currentUser.uid] is List &&
-              (emailLabelsMap[currentUser.uid] as List).contains('Starred')) {
-            isStarred = true;
-          }
-          data['starred'] = isStarred;
-          data['isDraft'] = false; // Assuming these are not drafts
-          return data;
-        }).toList();
-
-        final filteredEmails = allUserEmails.where((data) {
-          final isTrashedBy = List<String>.from(data['isTrashedBy'] ?? []);
-          final permanentlyDeletedBy = List<String>.from(data['permanentlyDeletedBy'] ?? []);
-          return !isTrashedBy.contains(currentUser.uid) && !permanentlyDeletedBy.contains(currentUser.uid);
-        }).toList();
+          final filteredEmails = allUserEmails.where((data) {
+            final isTrashedBy = List<String>.from(data['isTrashedBy'] ?? []);
+            final permanentlyDeletedBy = List<String>.from(data['permanentlyDeletedBy'] ?? []);
+            return !isTrashedBy.contains(currentUser.uid) && !permanentlyDeletedBy.contains(currentUser.uid);
+          }).toList();
 
         List<Map<String, dynamic>> emailsToDisplay;
         if (selectedLabel == "All inboxes" || selectedLabel == "Inbox") { 
@@ -293,8 +408,16 @@ class _GmailUIState extends State<GmailUI> {
             }
             return (fromMatches || senderIdMatches) || hasSentLabel;
           }).toList();
-        }
-        else { // Custom labels
+        } else if (selectedLabel == "Spam") {
+          emailsToDisplay = filteredEmails.where((email) {
+            final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
+            if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
+              final userSpecificLabels = List<String>.from(emailLabelsMap[currentUser.uid] as List);
+              return userSpecificLabels.contains("Spam");
+            }
+            return false;
+          }).toList();
+        } else { // Custom labels
           emailsToDisplay = filteredEmails.where((email) {
             final emailLabelsMap = email['emailLabels'] as Map<String, dynamic>?;
             if (emailLabelsMap != null && emailLabelsMap[currentUser.uid] is List) {
@@ -658,16 +781,15 @@ class _GmailUIState extends State<GmailUI> {
                                 } catch (e) {
                                   print("Error marking email as read on tap: $e");
                                 }
-                              }                              
-                              final result = await Navigator.push(
+                              }                                final result = await Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (context) => EmailDetailScreen(
+                                MaterialPageRoute(                                  builder: (context) => EmailDetailScreen(
                                     email: Map<String, dynamic>.from(email), 
                                     isSentView: selectedLabel == "Sent",
+                                    toggleSpamStatus: _toggleSpamStatus,
                                   ),
                                 ),
-                              );                              
+                              );
                               if (result is Map<String, dynamic> && mounted) {
                                 final currentUser = _auth.currentUser;                                
                                 setState(() {

@@ -277,14 +277,39 @@ class _CustomDrawerState extends State<CustomDrawer> {
             count: _isLoadingCounts ? 0 : (currentUserId != null ? _allDrafts.length : 0),
             isSelected: widget.selectedLabel == "Drafts",
             onTap: () => widget.onLabelSelected("Drafts")
-          ),
-          _buildDrawerItem(
+          ),          _buildDrawerItem(
             context, // Pass context
             Icons.delete_outline, 
             "Trash", 
             count: _isLoadingCounts ? 0 : (currentUserId != null ? _allEmails.where((e) => (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId)).length : 0),
             isSelected: widget.selectedLabel == "Trash",
             onTap: () => widget.onLabelSelected("Trash")
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.report_outlined,
+            "Spam",
+            count: _isLoadingCounts ? 0 : (currentUserId != null ? _allEmails.where((e) {
+              final isPermanentlyDeleted = (e['permanentlyDeletedBy'] as List<dynamic>? ?? []).contains(currentUserId);
+              if (isPermanentlyDeleted) {
+                return false; 
+              }
+
+              final isTrashed = (e['isTrashedBy'] as List<dynamic>? ?? []).contains(currentUserId);
+              if (isTrashed) {
+                return false;
+              }
+
+              final emailLabelsMap = e['emailLabels'] as Map<String, dynamic>?;
+              if (emailLabelsMap != null && emailLabelsMap[currentUserId] is List) {
+                final userLabels = List<String>.from(emailLabelsMap[currentUserId] as List);
+                return userLabels.contains('Spam');
+              }
+              return false;
+
+            }).length : 0),
+            isSelected: widget.selectedLabel == "Spam",
+            onTap: () => widget.onLabelSelected("Spam")
           ),
           Divider(color: dividerColor),
           ListTile(

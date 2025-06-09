@@ -13,9 +13,10 @@ class NotificationService {
   String? _lastEmailId;
   bool _allowNotifications = true;
   GlobalKey<ScaffoldMessengerState>? _scaffoldMessengerKey;
-
+  late DateTime _startTime;
   void initialize(GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey) {
     _scaffoldMessengerKey = scaffoldMessengerKey;
+    _startTime = DateTime.now(); 
     _startListening();
   }
 
@@ -64,40 +65,77 @@ class NotificationService {
     }, onError: (error) {
     });
   }
-
   void _listenToNewEmails(String userId) {
     _emailSubscription = FirebaseFirestore.instance
         .collection('emails')
         .where('involvedUserIds', arrayContains: userId)
         .orderBy('timestamp', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.docs.isNotEmpty) {
-        final doc = snapshot.docs.first;
-        final emailId = doc.id;
-        final data = doc.data();
+        .limit(1)        .snapshots()
+        .listen((snapshot) async {
+  if (snapshot.docs.isNotEmpty) {
+    final doc = snapshot.docs.first;
+    final emailId = doc.id;
+    final data = doc.data();
+    
+    final senderId = data['senderId'] as String?;
+    final emailTimestamp = data['timestamp'] as Timestamp?;
+    final emailTime = emailTimestamp?.toDate();
+    final isRecentEmail = emailTime != null && 
+                          emailTime.isAfter(_startTime.subtract(const Duration(seconds: 5)));
+    
+    if (senderId != userId && emailId != _lastEmailId && isRecentEmail) {
+      
+      _lastEmailId = emailId; 
+
+      if (!_allowNotifications) return; 
+
+      final senderName = data['senderDisplayName'] as String? ?? 
+                       data['from'] as String? ?? 
+                       'Người gửi';
+      final subjectText = data['subject'] as String? ?? '(Không có tiêu đề)';
+      
+      bool isSpam = false;
+      
+      for (int attempt = 0; attempt < 5; attempt++) {
+        await Future.delayed(Duration(milliseconds: 500 + (attempt * 300)));
         
-        // Check if this is a new email (not sent by current user)
-        final senderId = data['senderId'] as String?;
-        final isNewEmail = senderId != userId && emailId != _lastEmailId;
-        
-        if (isNewEmail && _allowNotifications) {
-          _showNewEmailNotification(
-            sender: data['senderDisplayName'] ?? data['from'] ?? 'Người gửi',
-            subject: data['subject'] ?? '(Không có tiêu đề)',
-            time: data['timestamp'] != null ? (data['timestamp'] as Timestamp).toDate() : DateTime.now(),
-          );
+        try {
+          final updatedDoc = await FirebaseFirestore.instance
+              .collection('emails')
+              .doc(emailId)
+              .get();
+          
+          if (updatedDoc.exists) {
+            final updatedData = updatedDoc.data() as Map<String, dynamic>;
+            final emailLabelsMap = updatedData['emailLabels'] as Map<String, dynamic>?;
+            final userLabels = emailLabelsMap?[userId] as List<dynamic>?;
+            isSpam = userLabels?.contains('Spam') ?? false;
+            
+            if (isSpam || updatedData['spamClassified'] == true) {
+              break;
+            }
+          }
+        } catch (e) {
+          print('Error checking spam status (attempt ${attempt + 1}): $e');
         }
-        _lastEmailId = emailId;
       }
-    }, onError: (error) {
-    });
+      
+      _showNewEmailNotification(
+        sender: senderName,
+        subject: subjectText,
+        time: emailTime,
+        isSpam: isSpam,
+      );
+    }
   }
-  void _showNewEmailNotification({
+}, onError: (error) {
+  print('Error listening to emails: $error');
+});
+  }  void _showNewEmailNotification({
     required String sender,
     required String subject,
     required DateTime time,
+    bool isSpam = false,
   }) {
     if (_scaffoldMessengerKey?.currentState == null) return;
 
@@ -107,7 +145,7 @@ class NotificationService {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue[600],
+            color: isSpam ? Colors.orange[800] : Colors.blue[600],
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
@@ -119,7 +157,11 @@ class NotificationService {
           ),
           child: Row(
             children: [
-              const Icon(Icons.mail, color: Colors.white, size: 24),
+              Icon(
+                isSpam ? Icons.warning : Icons.mail, 
+                color: Colors.white, 
+                size: 24
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -127,7 +169,7 @@ class NotificationService {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Thư mới từ $sender',
+                      isSpam ? 'Thư spam từ $sender' : 'Thư mới từ $sender',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -144,6 +186,17 @@ class NotificationService {
                         fontSize: 13,
                       ),
                     ),
+                    if (isSpam) ...[
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Thư này được đánh dấu là spam',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                       '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
@@ -166,7 +219,8 @@ class NotificationService {
             ],
           ),
         ),
-      ),      backgroundColor: Colors.transparent,
+      ),
+      backgroundColor: Colors.transparent,
       elevation: 0,
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 6),
@@ -175,11 +229,12 @@ class NotificationService {
 
     _scaffoldMessengerKey!.currentState!.showSnackBar(snackBar);
   }
-
   void onUserChanged() {
     dispose();
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      _startTime = DateTime.now(); // Reset start time when user changes
+      _lastEmailId = null; // Reset last email ID
       _startListening();
     }
   }

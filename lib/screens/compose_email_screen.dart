@@ -11,14 +11,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:url_launcher/url_launcher.dart'; 
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; 
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import '../services/reply_suggestion_service.dart';
 
 // Conditional import for web PDF viewer
 import '../utils/web_pdf_utils_stub.dart'
     if (dart.library.html) '../utils/web_pdf_utils_web.dart'
     as web_pdf_utils;
-
-
 
 class WebPdfViewerScreen extends StatefulWidget {
   final Uint8List pdfBytes;
@@ -30,20 +29,16 @@ class WebPdfViewerScreen extends StatefulWidget {
   _WebPdfViewerScreenState createState() => _WebPdfViewerScreenState();
 }
 
-class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
-  @override
+class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.fileName),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF202124) : Colors.white,
-        iconTheme: IconThemeData(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[400] : Colors.black54),
-      ),
-      body: const Center(child: Text('PDF viewer not supported on this platform')),
+      appBar: AppBar(title: Text(widget.fileName)),
+      body: kIsWeb 
+        ? const Center(child: Text('PDF viewer for web'))
+        : const Center(child: Text('PDF viewer not available')),
     );
   }
 }
-
 
 class ComposeEmailScreen extends StatefulWidget {
   final Map<String, dynamic>? replyOrForwardEmail;
@@ -83,9 +78,11 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   final TextEditingController _subjectController = TextEditingController();
   late quill.QuillController _quillController;
   final FocusNode _quillFocusNode = FocusNode();
+  final FocusNode _toFocusNode = FocusNode();
   bool _showCcBcc = false;
   List<File> _attachments = [];
-  Map<String, Uint8List> _webAttachmentData = {};  String? _draftId;
+  Map<String, Uint8List> _webAttachmentData = {};
+  String? _draftId;
   Timer? _debounceTimer;
   bool _isSending = false;
   String _defaultFontFamily = 'Roboto';
@@ -93,16 +90,21 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
   bool _isLoadingAppSettings = true;
   bool _toHasError = false;
   bool _ccHasError = false;
-  bool _bccHasError = false;  final List<double> _availableFontSizes = const [8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
+  bool _bccHasError = false;
+  final List<double> _availableFontSizes = const [8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
+
+  // Reply suggestions
+  bool _showReplySuggestions = false;
+  List<String> _replySuggestions = [];
+  bool _isLoadingSuggestions = false;
+  bool _canShowSuggestions = false;
 
   @override
   void initState() {
     super.initState();
     _quillController = quill.QuillController.basic();
     _quillController.addListener(() {
-      if (mounted) {
-        setState(() {});
-      }
+      // Optional: add any change listeners here
     });
 
     _toController.addListener(() {
@@ -114,10 +116,60 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     _bccController.addListener(() {
       if (_bccHasError) setState(() => _bccHasError = false);
     });
-    
+      
+    // Check if this is a reply and enable suggestions
+    if (widget.isReply || widget.isReplyAll) {
+      _canShowSuggestions = true;
+      _generateReplySuggestions();
+    }
+
     _loadAppSettingsAndInitialize();
   }
 
+  Future<void> _generateReplySuggestions() async {
+    if (!_canShowSuggestions || widget.replyOrForwardEmail == null) return;
+    
+    setState(() {
+      _isLoadingSuggestions = true;
+    });
+
+    try {
+      final suggestions = await ReplySuggestionService.generateReplySuggestions(widget.replyOrForwardEmail!);
+      if (mounted) {
+        setState(() {
+          _replySuggestions = suggestions;
+          _isLoadingSuggestions = false;
+        });
+      }
+    } catch (e) {
+      print('Error generating suggestions: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingSuggestions = false;
+        });
+      }
+    }
+  }  void _applySuggestion(String suggestion) {
+    try {
+      // Clear current content and insert suggestion
+      _quillController.clear();
+      _quillController.document.insert(0, suggestion);
+      
+      setState(() {
+        _showReplySuggestions = false;
+      });
+      
+      // Move cursor to end and request focus
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _quillController.moveCursorToEnd();
+          _quillFocusNode.requestFocus();
+        }
+      });
+    } catch (e) {
+      print('Error applying suggestion: $e');
+    }
+  }
   Future<void> _viewAttachmentPreview(File file) async {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
@@ -195,7 +247,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     }
   }
 
-  final FocusNode _toFocusNode = FocusNode();
   Future<void> _loadAppSettingsAndInitialize() async {
     setState(() {
       _isLoadingAppSettings = true;
@@ -204,19 +255,22 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     User? currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       try {
-        DocumentSnapshot userSettings = await FirebaseFirestore.instance
+        final userSettings = await FirebaseFirestore.instance
             .collection('users')
             .doc(currentUser.uid)
             .collection('settings')
             .doc('editor')
-            .get();        if (userSettings.exists && userSettings.data() != null) {
+            .get();
+        
+        if (userSettings.exists) {
           final settingsData = userSettings.data() as Map<String, dynamic>;
           _defaultFontFamily = settingsData['fontFamily'] as String? ?? 'Roboto';
           final loadedFontSize = (settingsData['fontSize'] as num?)?.toDouble() ?? 14.0;
+          
           if (_availableFontSizes.contains(loadedFontSize)) {
             _defaultEditorFontSize = loadedFontSize;
           } else {
-            _defaultEditorFontSize = _availableFontSizes.reduce((a, b) => 
+            _defaultEditorFontSize = _availableFontSizes.reduce((a, b) =>
               (a - loadedFontSize).abs() < (b - loadedFontSize).abs() ? a : b);
           }
         }
@@ -227,7 +281,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
 
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email;
     _fromController.text = currentUserEmail ?? "anonymous@example.com";
-    if (widget.draftToLoad != null) {
+      if (widget.draftToLoad != null) {
       _draftId = widget.draftToLoad!['id'];
       _toController.text = (widget.draftToLoad!['toRecipients'] as List<dynamic>?)?.join(', ') ?? '';
       _ccController.text = (widget.draftToLoad!['ccRecipients'] as List<dynamic>?)?.join(', ') ?? '';
@@ -255,7 +309,6 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
       final attachmentPaths = List<String>.from(widget.draftToLoad!['attachmentLocalPaths'] ?? []);
       _attachments = attachmentPaths.map((path) => File(path)).toList();
     } else if (widget.replyOrForwardEmail != null) {
-      _populateFieldsForReplyForward();
       if (widget.replyOrForwardEmail!.containsKey('isDraft') &&
           widget.replyOrForwardEmail!['isDraft'] == true) {
         _draftId = widget.replyOrForwardEmail!['id'];
@@ -283,14 +336,23 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         }
         final attachmentPaths = List<String>.from(widget.replyOrForwardEmail!['attachmentLocalPaths'] ?? []);
         _attachments = attachmentPaths.map((path) => File(path)).toList();
+      } else {
+        _populateFieldsForReplyForward();
       }
     } else {
+      if (widget.recipientEmail != null) _toController.text = widget.recipientEmail!;
+      if (widget.subject != null) _subjectController.text = widget.subject!;
+      if (widget.initialBody != null) {
+        _quillController.document = quill.Document()..insert(0, widget.initialBody!);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.replyOrForwardEmail == null && widget.draftToLoad == null) {
           FocusScope.of(context).requestFocus(_toFocusNode);
         }
       });
-    }_toController.addListener(_onTextChanged);
+    }
+
+    _toController.addListener(_onTextChanged);
     _ccController.addListener(_onTextChanged);
     _bccController.addListener(_onTextChanged);
     _subjectController.addListener(_onTextChanged);
@@ -298,8 +360,11 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
     setState(() {
       _isLoadingAppSettings = false;
     });
-  }  void _onTextChanged() {
   }
+
+  void _onTextChanged() {
+  }
+
   void _populateFieldsForReplyForward() {
     final email = widget.replyOrForwardEmail!;
     String originalSender = email['senderEmail'] ?? email['from'] ?? '';
@@ -311,39 +376,47 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
         final deltaJson = jsonDecode(email['bodyDeltaJson'] as String);
         quotedDocument = quill.Document.fromJson(deltaJson);
       } catch (e) {
-        print("Error loading original bodyDeltaJson for reply/forward: $e");
+        print("Error parsing bodyDeltaJson: $e");
+        quotedDocument = null;
       }
     }
     
+    String originalBody = '';
+    if (quotedDocument != null) {
+      originalBody = quotedDocument.toPlainText();
+    } else {
+      originalBody = email['bodyPlainText'] ?? email['body'] ?? '';
+    }
+    
     if (quotedDocument == null) {
-      String originalBody = email['bodyPlainText'] ?? email['body'] ?? email['bodyContent'] ?? '';
       quotedDocument = quill.Document()..insert(0, originalBody);
-    }    if (widget.composeMode == 'reply') {
+    }
+
+    if (widget.composeMode == 'reply') {
       _toController.text = originalSender;
-      _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
-          ? originalSubject
-          : "Re: $originalSubject";
-      
-      // Chỉ tạo document trống cho reply, không include nội dung cũ
+      if (!originalSubject.toLowerCase().startsWith('re:')) {
+        _subjectController.text = 'Re: $originalSubject';
+      } else {
+        _subjectController.text = originalSubject;
+      }
       _quillController.document = quill.Document();
     } else if (widget.composeMode == 'replyAll') {
       _toController.text = originalSender;
-      List<String> originalCc = List<String>.from(email['ccRecipients'] ?? []);
-      _ccController.text = originalCc.join(', ');
-      _subjectController.text = originalSubject.toLowerCase().startsWith("re:")
-          ? originalSubject
-          : "Re: $originalSubject";
-      
-      // Chỉ tạo document trống cho reply all, không include nội dung cũ
+      final ccRecipients = email['ccRecipients'] as List<dynamic>? ?? [];
+      _ccController.text = ccRecipients.join(', ');
+      if (!originalSubject.toLowerCase().startsWith('re:')) {
+        _subjectController.text = 'Re: $originalSubject';
+      } else {
+        _subjectController.text = originalSubject;
+      }
       _quillController.document = quill.Document();
     } else if (widget.composeMode == 'forward') {
-      _subjectController.text = originalSubject.toLowerCase().startsWith("fwd:")
-          ? originalSubject
-          : "Fwd: $originalSubject";
-      
-      // Cho forward, có thể include nội dung cũ
-      _quillController.document = quill.Document()..insert(0, "\n\n--- Forwarded Message ---\n");
-      _quillController.document.compose(quotedDocument.toDelta(), quill.ChangeSource.local);
+      if (!originalSubject.toLowerCase().startsWith('fwd:')) {
+        _subjectController.text = 'Fwd: $originalSubject';
+      } else {
+        _subjectController.text = originalSubject;
+      }
+      _quillController.document = quill.Document();
     }
     _quillController.moveCursorToPosition(0);
   }
@@ -1249,8 +1322,7 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
               ),            ],
           ),
         ],
-      ),
-      body: Column(
+      ),          body: Column(
         children: [
           if (_isSending)
             LinearProgressIndicator(
@@ -1325,14 +1397,14 @@ class _ComposeEmailScreenState extends State<ComposeEmailScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Column(                    children: [
-                     const SizedBox(height: 10.0),
-                      // Custom simplified toolbar to prevent freezing
+                     const SizedBox(height: 10.0),                      // Custom simplified toolbar to prevent freezing
                       Container(
                         decoration: BoxDecoration(
                           color: isDarkMode ? Colors.grey[850] : Colors.grey[100],
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: SingleChildScrollView(                          scrollDirection: Axis.horizontal,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
 // Font Family Dropdown
@@ -1447,11 +1519,107 @@ Container(
                                 Future.delayed(const Duration(milliseconds: 50), () {
                                   if (mounted) _quillFocusNode.requestFocus();
                                 });
-                              }, isDarkMode),
+                              }, isDarkMode),                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                        // Reply Suggestions Section - chỉ hiển thị khi là reply
+                      if (_canShowSuggestions && (widget.isReply || widget.isReplyAll)) ...[
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.auto_awesome,
+                                    size: 16,
+                                    color: isDarkMode ? Colors.blue[300] : Colors.blue[700],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Gợi ý trả lời nhanh',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showReplySuggestions = !_showReplySuggestions;
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _showReplySuggestions ? Icons.expand_less : Icons.expand_more,
+                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_showReplySuggestions) ...[
+                                const SizedBox(height: 8),
+                                if (_isLoadingSuggestions)
+                                  const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  )
+                                else if (_replySuggestions.isNotEmpty)
+                                  ...(_replySuggestions.map((suggestion) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton(
+                                        onPressed: () => _applySuggestion(suggestion),
+                                        style: OutlinedButton.styleFrom(
+                                          alignment: Alignment.centerLeft,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+                                        ),
+                                        child: Text(
+                                          suggestion,
+                                          style: TextStyle(
+                                            color: isDarkMode ? Colors.grey[200] : Colors.black87,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )).toList())
+                                else
+                                  const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text(
+                                      'Không có gợi ý trả lời',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ],
                           ),
                         ),
-                      ),                      const SizedBox(height: 8),
+                        const SizedBox(height: 8),
+                      ],
+                      
                       Container(
                         constraints: const BoxConstraints(
                           minHeight: 200,
@@ -1872,7 +2040,6 @@ void _applyFontAndSizeToSelection({String? fontFamily, double? fontSize}) {
       case 'rar':
       case '7z':
       case 'tar':
-      case 'gz':
         return Icons.folder_zip_outlined;
 
       // Code files

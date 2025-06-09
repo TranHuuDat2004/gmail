@@ -16,6 +16,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   final TextEditingController _passwordController = TextEditingController();
   String? _error;
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
   late AnimationController _animationController; 
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
@@ -169,18 +170,28 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     keyboardType: TextInputType.emailAddress,
                     enabled: !_isLoading,
                   ),
-                  const SizedBox(height: 18),
-                  TextField(
+                  const SizedBox(height: 18),                  TextField(
                     controller: _passwordController,
                     cursorColor: Colors.grey,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Mật khẩu',
-                      labelStyle: TextStyle(color: Colors.grey),
-                      prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF1A73E8)),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isPasswordVisible = !_isPasswordVisible;
+                          });
+                        },
+                      ),
+                      enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
                     ),
-                    obscureText: true,
+                    obscureText: !_isPasswordVisible,
                     enabled: !_isLoading,
                   ),
                   //  "Quên mật khẩu?"
